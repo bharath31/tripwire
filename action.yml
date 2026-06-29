@@ -1,4 +1,4 @@
-name: 'Tripwire'
+name: 'Tripwire for Claude Code Skills'
 description: 'Lint and coverage-probe Claude Code skills on every PR.'
 author: 'bharath31'
 branding:
