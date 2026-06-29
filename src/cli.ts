@@ -17,7 +17,7 @@ const program = new Command();
 
 program
   .name('tripwire')
-  .description('Lint and coverage-probe Claude Code skills')
+  .description('Lint and coverage-probe Agent Skills')
   .version('0.1.0');
 
 program

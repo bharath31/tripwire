@@ -2,7 +2,7 @@
 
 **Does your skill trip on the right prompts?**
 
-Tripwire lints [Claude Code](https://docs.claude.com/en/docs/claude-code) skills and probes their **activation coverage** — surfacing description bugs, coverage gaps, and false positives before they ship. It's a CLI, a GitHub Action, and an in-browser playground over one engine.
+Tripwire lints **Agent Skills** — the `SKILL.md` files that extend coding agents — and probes their **activation coverage**, surfacing description bugs, coverage gaps, and false positives before they ship. It's a CLI, a GitHub Action, and an in-browser playground over one engine. (Activation probing runs through the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI today.)
 
 A skill's `description` is the signal Claude uses to decide whether to invoke it. Get it wrong and the skill silently never fires — or fires on the wrong prompts. Tripwire catches both.
 

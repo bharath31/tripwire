@@ -1,7 +1,7 @@
 {
   "name": "tripwire",
   "version": "0.1.0",
-  "description": "Lint and coverage-probe Claude Code skills — does your skill trip on the right prompts?",
+  "description": "Lint and coverage-probe Agent Skills — does your skill trip on the right prompts?",
   "type": "module",
   "bin": { "tripwire": "./dist/cli.js" },
   "scripts": {

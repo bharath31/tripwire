@@ -1,5 +1,5 @@
-name: 'Tripwire for Claude Code Skills'
-description: 'Lint and coverage-probe Claude Code skills on every PR.'
+name: 'Tripwire for Agent Skills'
+description: 'Lint and coverage-probe Agent Skills on every PR.'
 author: 'bharath31'
 branding:
   icon: 'alert-triangle'
