@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"abc"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I can help you fix this bug. Let me look at the code."},{"type":"tool_use","id":"toolu_02","name":"Read","input":{"file_path":"/app/index.js"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"file contents"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"The issue is a missing null check on line 42."}]}}
+{"type":"result","subtype":"success","result":"done"}

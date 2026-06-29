@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tripwire — does your skill trip on the right prompts?</title>
+  <meta name="description" content="Tripwire lints Claude Code skills and probes their activation coverage. Catch description bugs and activation gaps before they ship." />
+  <meta property="og:title" content="Tripwire" />
+  <meta property="og:description" content="Does your skill trip on the right prompts? Lint and coverage-probe Claude Code skills." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff4d4d'/%3E%3Cline x1='0' y1='16' x2='32' y2='16' stroke='%23ff4d4d' stroke-width='2'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="wire-bg" aria-hidden="true"></div>
+
+  <header class="nav">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">tripwire</span>
+    </div>
+    <nav class="nav-links">
+      <a href="#playground">Playground</a>
+      <a href="#how">How it works</a>
+      <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">CLI for Claude Code skill authors</p>
+      <h1>Does your skill trip on<br /><span class="accent">the right prompts?</span></h1>
+      <p class="lede">
+        Tripwire lints your skill files and probes which prompts actually activate them —
+        surfacing description bugs, coverage gaps, and false positives before they ship.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#playground">Try the linter →</a>
+        <a class="btn btn-ghost" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <div class="install">
+        <code id="install-cmd">npm install -g tripwire</code>
+        <button class="copy-btn" data-copy="npm install -g tripwire" aria-label="Copy install command">Copy</button>
+      </div>
+    </section>
+
+    <section class="how" id="how">
+      <div class="card">
+        <div class="card-cmd">tripwire lint</div>
+        <h3>Static rules, instant</h3>
+        <p>Free, offline checks: the description must start with “Use when”, stay under 1024 chars, avoid workflow summaries, and more.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">tripwire analyze</div>
+        <h3>Real activation coverage</h3>
+        <p>Generates a prompt matrix across four zones and runs real Claude sessions to map what fires, what misses, and what false-triggers.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">tripwire test</div>
+        <h3>Cheap CI reruns</h3>
+        <p>Commit the generated scenarios and rerun them in CI to catch activation regressions without re-probing from scratch.</p>
+      </div>
+    </section>
+
+    <section class="playground" id="playground">
+      <div class="playground-head">
+        <h2>Lint a skill, right here</h2>
+        <p>The same lint engine the CLI uses, bundled to your browser. Nothing leaves this page.</p>
+      </div>
+
+      <div class="examples">
+        <span>Load an example:</span>
+        <button class="chip" data-example="good">Well-formed skill</button>
+        <button class="chip" data-example="bad">Skill with problems</button>
+      </div>
+
+      <div class="pg-grid">
+        <div class="pg-pane">
+          <div class="pane-label">SKILL.md</div>
+          <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
+        </div>
+        <div class="pg-pane">
+          <div class="pane-label">Result</div>
+          <div id="pg-output" class="pg-output"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Tripwire — a linter &amp; coverage probe for Claude Code skills.</span>
+    <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
+  </footer>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

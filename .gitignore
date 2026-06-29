@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# SDD scratch (briefs, reports, progress ledger, review packages)
+.superpowers/
+
+# Generated scenario artifacts from analyze runs in fixtures
+tests/fixtures/tripwire-scenarios.yaml
+
+# Logs / OS
+*.log
+.DS_Store
+
+# Generated web bundle (npm run build:web)
+web/engine.js
+
+# Internal design docs (specs + plans) — not for the public repo
+docs/superpowers/

@@ -1,0 +1,21 @@
+name: Tripwire
+on:
+  pull_request:
+    paths:
+      - '**/SKILL.md'
+      - 'tests/fixtures/**'
+jobs:
+  skills:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./
+        with:
+          probe: false
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

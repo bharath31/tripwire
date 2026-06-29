@@ -1,0 +1,52 @@
+name: 'Tripwire'
+description: 'Lint and coverage-probe Claude Code skills on every PR.'
+author: 'bharath31'
+branding:
+  icon: 'alert-triangle'
+  color: 'red'
+inputs:
+  paths:
+    description: 'Comma- or newline-separated globs for skill files.'
+    default: '**/SKILL.md'
+  probe:
+    description: 'Run the activation coverage probe (requires ANTHROPIC_API_KEY).'
+    default: 'false'
+  fail-on-warning:
+    description: 'Treat lint warnings as check failures.'
+    default: 'false'
+  comment:
+    description: 'Post/update a sticky summary comment on the PR.'
+    default: 'true'
+  claude-version:
+    description: 'Version of @anthropic-ai/claude-code to install for the probe.'
+    default: 'latest'
+  working-directory:
+    description: 'Root to resolve skills and run the probe from.'
+    default: '.'
+  anthropic-api-key:
+    description: 'Anthropic API key for the coverage probe. If empty, falls back to the ANTHROPIC_API_KEY already in the environment.'
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Claude Code CLI (probe only)
+      if: ${{ inputs.probe == 'true' }}
+      shell: bash
+      env:
+        CLAUDE_VERSION: ${{ inputs.claude-version }}
+      run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_VERSION}"
+    - name: Run Tripwire
+      shell: bash
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_PROBE: ${{ inputs.probe }}
+        INPUT_FAIL_ON_WARNING: ${{ inputs.fail-on-warning }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        if [ -n "$INPUT_ANTHROPIC_API_KEY" ]; then
+          export ANTHROPIC_API_KEY="$INPUT_ANTHROPIC_API_KEY"
+        fi
+        node "$GITHUB_ACTION_PATH/action-dist/index.js"

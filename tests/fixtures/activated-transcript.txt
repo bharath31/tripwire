@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"abc"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Let me brainstorm this with you."},{"type":"tool_use","id":"toolu_01","name":"Skill","input":{"skill":"superpowers:brainstorming"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"skill loaded"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"First question: what are you trying to build?"}]}}
+{"type":"result","subtype":"success","result":"done"}
