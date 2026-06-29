@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tripwire — does your skill trip on the right prompts?</title>
-  <meta name="description" content="Tripwire lints Claude Code skills and probes their activation coverage. Catch description bugs and activation gaps before they ship." />
+  <title>Tripwire — the quality gate for Claude Code skills</title>
+  <meta name="description" content="Everything you need to confirm your Claude Code skills work and follow best practices: lint, real activation-coverage probing, and a GitHub Action that gates every PR." />
   <meta property="og:title" content="Tripwire" />
-  <meta property="og:description" content="Does your skill trip on the right prompts? Lint and coverage-probe Claude Code skills." />
+  <meta property="og:description" content="The quality gate for Claude Code skills: lint, activation coverage, and CI checks on every PR." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff4d4d'/%3E%3Cline x1='0' y1='16' x2='32' y2='16' stroke='%23ff4d4d' stroke-width='2'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="./styles.css" />
@@ -20,23 +20,26 @@
       <span class="brand-name">tripwire</span>
     </div>
     <nav class="nav-links">
+      <a href="#checks">Checks</a>
+      <a href="#coverage">Coverage</a>
+      <a href="#ci">CI</a>
       <a href="#playground">Playground</a>
-      <a href="#how">How it works</a>
       <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
     </nav>
   </header>
 
   <main>
     <section class="hero">
-      <p class="eyebrow">CLI for Claude Code skill authors</p>
+      <p class="eyebrow">the quality gate for Claude Code skills</p>
       <h1>Does your skill trip on<br /><span class="accent">the right prompts?</span></h1>
       <p class="lede">
-        Tripwire lints your skill files and probes which prompts actually activate them —
-        surfacing description bugs, coverage gaps, and false positives before they ship.
+        Everything you need to confirm a skill <strong>works</strong> and <strong>follows best
+        practices</strong> — in one tool. Tripwire lints your <code>SKILL.md</code>, probes which
+        prompts actually activate it with real Claude sessions, and gates every PR in CI.
       </p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#playground">Try the linter →</a>
-        <a class="btn btn-ghost" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">View on GitHub</a>
+        <a class="btn btn-primary" href="#ci">Add to your CI →</a>
+        <a class="btn btn-ghost" href="#playground">Try it in the browser</a>
       </div>
       <div class="install">
         <code id="install-cmd">npm install -g tripwire</code>
@@ -44,28 +47,89 @@
       </div>
     </section>
 
-    <section class="how" id="how">
+    <!-- Three pillars -->
+    <section class="how" id="checks">
       <div class="card">
         <div class="card-cmd">tripwire lint</div>
-        <h3>Static rules, instant</h3>
-        <p>Free, offline checks: the description must start with “Use when”, stay under 1024 chars, avoid workflow summaries, and more.</p>
+        <h3>Best-practice lint</h3>
+        <p>Instant, offline checks: <code>description</code> starts with “Use when”, stays under 1024 chars, and avoids workflow summaries; <code>name</code> is kebab-case; the body has real examples and isn’t a stub.</p>
       </div>
-      <div class="card">
+      <div class="card card-accent">
         <div class="card-cmd">tripwire analyze</div>
         <h3>Real activation coverage</h3>
-        <p>Generates a prompt matrix across four zones and runs real Claude sessions to map what fires, what misses, and what false-triggers.</p>
+        <p>Generates a prompt matrix across four zones and runs <strong>real Claude sessions</strong> to map what fires, what silently misses, and what false-triggers — the check a linter can’t do.</p>
       </div>
       <div class="card">
         <div class="card-cmd">tripwire test</div>
-        <h3>Cheap CI reruns</h3>
-        <p>Commit the generated scenarios and rerun them in CI to catch activation regressions without re-probing from scratch.</p>
+        <h3>CI-ready regression gate</h3>
+        <p>Commit the generated scenarios and rerun them deterministically — in CI or locally — to catch activation regressions before they ship.</p>
       </div>
     </section>
 
+    <!-- Coverage deep-dive -->
+    <section class="feature" id="coverage">
+      <div class="feature-head">
+        <p class="eyebrow">the part a linter can’t catch</p>
+        <h2>Activation coverage, measured against real runs</h2>
+        <p class="feature-sub">
+          A skill’s <code>description</code> decides whether Claude invokes it. Tripwire generates
+          prompts across four zones, runs them through real sessions, and reports exactly where your
+          skill over- or under-fires.
+        </p>
+      </div>
+      <div class="zones">
+        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Core triggers</b><span>the skill’s own stated use cases</span></div>
+        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Adjacent / edge</b><span>related intents you didn’t think to test</span></div>
+        <div class="zone"><span class="zone-no">should stay quiet ✗</span><b>Negative</b><span>off-topic prompts — catches false positives</span></div>
+        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Keyword variants</b><span>paraphrases — exposes description blind spots</span></div>
+      </div>
+      <pre class="report"><span class="r-dim">Coverage Report: brainstorming</span>
+Core triggers      7/8 activated   (88%) <span class="r-ok">✓</span>
+Adjacent/edge      3/8 activated   (38%) <span class="r-warn">⚠</span>
+Negatives          1/8 activated   (13%) <span class="r-ok">✓</span>
+Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
+
+<span class="r-dim">─ GAPS ───────────────────────────</span>
+<span class="r-bad">✗</span> "what's the best way to approach X?"   [adjacent — miss]
+<span class="r-bad">✗</span> "brainstorm ideas for Y"               [variant — miss]
+<span class="r-dim">─ SUGGESTIONS ─────────────────────</span>
+1. Add "brainstorm", "think through" to the description
+2. Cover "approach" questions — add "planning how to approach"</pre>
+    </section>
+
+    <!-- CI / Action -->
+    <section class="feature alt" id="ci">
+      <div class="feature-head">
+        <p class="eyebrow">runs on every pull request</p>
+        <h2>The same checks, as a GitHub Action</h2>
+        <p class="feature-sub">
+          Gate skill changes the way you gate lint and tests. Add one workflow file — it lints changed
+          skills, runs the coverage probe with <strong>your own API key in your own runner</strong>,
+          annotates the diff, and posts a sticky summary. The key never leaves your CI.
+        </p>
+      </div>
+      <pre class="snippet"><span class="s-c"># .github/workflows/tripwire.yml</span>
+<span class="s-k">name</span>: Tripwire
+<span class="s-k">on</span>: pull_request
+<span class="s-k">jobs</span>:
+  skills:
+    <span class="s-k">runs-on</span>: ubuntu-latest
+    <span class="s-k">permissions</span>: { contents: read, pull-requests: write }
+    <span class="s-k">steps</span>:
+      - <span class="s-k">uses</span>: actions/checkout@v4
+        <span class="s-k">with</span>: { fetch-depth: 0 }
+      - <span class="s-k">uses</span>: bharath31/tripwire@v1
+        <span class="s-k">with</span>:
+          probe: true
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}</pre>
+      <p class="ci-note">No key on a fork PR? The probe skips with a notice — lint still runs and gates the PR.</p>
+    </section>
+
+    <!-- Playground -->
     <section class="playground" id="playground">
       <div class="playground-head">
-        <h2>Lint a skill, right here</h2>
-        <p>The same lint engine the CLI uses, bundled to your browser. Nothing leaves this page.</p>
+        <h2>Try the lint check, right here</h2>
+        <p>The real lint engine, bundled to your browser — an instant taste. The full activation-coverage probe runs from the CLI and the Action (it needs real Claude sessions). Nothing leaves this page.</p>
       </div>
 
       <div class="examples">
@@ -88,7 +152,7 @@
   </main>
 
   <footer class="footer">
-    <span>Tripwire — a linter &amp; coverage probe for Claude Code skills.</span>
+    <span>Tripwire — the quality gate for Claude Code skills.</span>
     <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
   </footer>
 

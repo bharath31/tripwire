@@ -263,3 +263,72 @@ main, .nav, .footer { position: relative; z-index: 1; }
   .nav-links { gap: 16px; }
   .pg-pane { min-height: 300px; }
 }
+
+/* ---------- Accent card (middle pillar) ---------- */
+.card-accent { border-color: #ff4d4d44; background: linear-gradient(180deg, var(--accent-dim), var(--panel) 60%); }
+
+/* ---------- Feature sections ---------- */
+.feature {
+  max-width: 980px;
+  margin: 80px auto;
+  padding: 0 28px;
+}
+.feature.alt { /* subtle separation handled by content */ }
+.feature-head { text-align: center; margin-bottom: 32px; }
+.feature-head h2 { font-size: clamp(26px, 4vw, 36px); letter-spacing: -0.02em; }
+.feature-sub { color: var(--muted); max-width: 640px; margin: 14px auto 0; font-size: 16px; }
+.feature code { font-family: var(--mono); font-size: 0.9em; color: var(--text); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; }
+
+/* ---------- Coverage zones ---------- */
+.zones {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.zone {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zone b { font-size: 16px; }
+.zone span:last-child { color: var(--muted); font-size: 14px; }
+.zone-yes, .zone-no {
+  font-family: var(--mono);
+  font-size: 11px;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+.zone-yes { color: var(--green); background: #4ade8015; }
+.zone-no { color: var(--accent); background: var(--accent-dim); }
+
+/* ---------- Code / report blocks ---------- */
+.report, .snippet {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text);
+}
+.r-ok { color: var(--green); }
+.r-warn { color: var(--yellow); }
+.r-bad { color: var(--accent); }
+.r-dim { color: var(--muted); }
+.s-c { color: var(--muted); }
+.s-k { color: var(--accent); }
+.ci-note { text-align: center; color: var(--muted); font-size: 14px; margin-top: 16px; }
+
+@media (max-width: 760px) {
+  .zones { grid-template-columns: 1fr; }
+}
