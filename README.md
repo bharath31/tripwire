@@ -6,7 +6,7 @@ Tripwire lints [Claude Code](https://docs.claude.com/en/docs/claude-code) skills
 
 A skill's `description` is the signal Claude uses to decide whether to invoke it. Get it wrong and the skill silently never fires — or fires on the wrong prompts. Tripwire catches both.
 
-▶️ **Try the linter in your browser:** [tripwire-f36.pages.dev](https://tripwire-f36.pages.dev)
+▶️ **Try the linter in your browser:** [tripwire.bharath.sh](https://tripwire.bharath.sh)
 
 ---
 
