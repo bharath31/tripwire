@@ -3,6 +3,24 @@
   "version": "0.1.0",
   "description": "Lint and coverage-probe Agent Skills — does your skill trip on the right prompts?",
   "type": "module",
+  "homepage": "https://tripwire.bharath.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bharath31/tripwire.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bharath31/tripwire/issues"
+  },
+  "keywords": [
+    "agent-skills",
+    "claude",
+    "claude-code",
+    "skill",
+    "skill-md",
+    "linter",
+    "ci",
+    "ai-agents"
+  ],
   "bin": {
     "tripwire": "./dist/cli.js"
   },
