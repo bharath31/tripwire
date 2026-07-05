@@ -1,7 +1,7 @@
 // Cloudflare Pages Function: GET /api/badge
 // Live README badge — fetches a raw SKILL.md from GitHub and lints it fresh on
 // every request. No stored state; only as stale as the CDN cache below.
-import { lintSource } from '../../src/engine.js';
+import { lintSource } from '../../web/src/engine.js';
 import { badgeMessage, renderBadgeSvg, COLORS } from '../_lib/badge.js';
 
 const CACHE_SECONDS = 300;
@@ -21,7 +21,10 @@ function unknownBadge(): Response {
   });
 }
 
-export const onRequestGet = async (context: PagesContext): Promise<Response> => {
+// onRequest (not onRequestGet) so HEAD requests — which some social/link
+// crawlers issue before GET — also get the image content-type, not the SPA
+// fallback. The runtime strips the body for HEAD automatically.
+export const onRequest = async (context: PagesContext): Promise<Response> => {
   const { searchParams } = new URL(context.request.url);
   const repo = searchParams.get('repo');
   const path = searchParams.get('path') || 'SKILL.md';

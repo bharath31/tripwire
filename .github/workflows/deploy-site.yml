@@ -1,0 +1,46 @@
+name: Deploy site
+
+# Auto-deploys the landing page + Pages Functions (web/ static assets and the
+# root functions/ dir) to the Cloudflare Pages project "tripwire" on every push
+# to main that touches the deployed output. The project is direct-upload (not
+# git-connected), so this workflow is what makes pushes go live.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "functions/**"
+      - "src/**" # the Pages Functions bundle src/lint + src/engine
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the browser bundle
+        run: npm run build:web
+      - name: Publish to Cloudflare Pages
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        run: npx --yes wrangler@4 pages deploy web --project-name=tripwire --branch=main
+      - name: Note missing token
+        if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
+        run: echo "::warning::Set the CLOUDFLARE_API_TOKEN repo secret to enable auto-deploy."

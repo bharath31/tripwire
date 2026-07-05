@@ -10,7 +10,9 @@ interface PagesContext {
   request: Request;
 }
 
-export const onRequestGet = async (context: PagesContext): Promise<Response> => {
+// onRequest (not onRequestGet) so HEAD requests from social/link crawlers also
+// resolve to the image, not the SPA fallback. The runtime drops the body for HEAD.
+export const onRequest = async (context: PagesContext): Promise<Response> => {
   const { skill, status, errors, warnings, hasResult } = parseParams(context.request.url);
   const html = hasResult ? buildCardHtml(skill, status, errors, warnings) : buildBrandHtml();
   return new ImageResponse(html, {

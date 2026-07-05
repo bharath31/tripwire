@@ -1,6 +1,6 @@
 // Pure badge logic — no Cloudflare/runtime specifics, so it's unit-testable
 // in plain vitest. The route handler (../api/badge.ts) is the thin glue.
-import type { LintResult } from '../../../src/types.js';
+import type { LintResult } from '../../src/types.js';
 
 export const COLORS = { pass: '#4ade80', warn: '#fbbf24', fail: '#ff4d4d', unknown: '#8b8d9a' };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { statusCopy, parseParams, buildCardHtml, buildBrandHtml } from '../../web/functions/_lib/og.js';
+import { statusCopy, parseParams, buildCardHtml, buildBrandHtml } from '../../functions/_lib/og.js';
 
 describe('statusCopy', () => {
   it('reports fail with error count when errors are present', () => {

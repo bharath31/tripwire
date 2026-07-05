@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { badgeMessage, renderBadgeSvg } from '../../web/functions/_lib/badge.js';
+import { badgeMessage, renderBadgeSvg } from '../../functions/_lib/badge.js';
 
 describe('badgeMessage', () => {
   it('reports error count and fail color when errors are present', () => {
