@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tripwire — the quality gate for Agent Skills</title>
-  <meta name="description" content="Everything you need to confirm your Agent Skills work and follow best practices: lint, real activation-coverage probing, and a GitHub Action that gates every PR." />
+  <meta name="description" content="Everything you need to ship Agent Skills that work: lint, real activation-coverage probing, conflict and model-drift detection, outcome evals, cross-agent checks, and a GitHub Action that gates every PR." />
   <meta property="og:title" content="Tripwire" />
   <meta property="og:description" content="The quality gate for Agent Skills: lint, activation coverage, and CI checks on every PR." />
   <meta property="og:type" content="website" />
@@ -26,6 +26,7 @@
       <a href="#checks">Checks</a>
       <a href="#coverage">Coverage</a>
       <a href="#ci">CI</a>
+      <a href="#more">More</a>
       <a href="#playground">Playground</a>
       <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
     </nav>
@@ -128,6 +129,46 @@ Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
       <p class="ci-note">No key on a fork PR? The probe skips with a notice — lint still runs and gates the PR.</p>
     </section>
 
+    <!-- More in the box -->
+    <section id="more">
+      <div class="feature-head">
+        <p class="eyebrow">as your skills grow</p>
+        <h2>More than lint, and more than one skill at a time</h2>
+      </div>
+      <div class="how">
+      <div class="card">
+        <div class="card-cmd">tripwire conflicts</div>
+        <h3>Skill-set conflict detection</h3>
+        <p>Two skills that each lint clean can still fight at runtime. Scan a whole directory for <strong>name collisions</strong> and <strong>description overlap</strong> — skills shadowing each other.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">tripwire eval</div>
+        <h3>Outcome evals</h3>
+        <p>Did the skill actually <em>do</em> the right thing, not just fire? Author <code>assertions</code> plus an optional LLM-judge <code>rubric</code> per case.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">tripwire test-all · --drift</div>
+        <h3>Model-drift detection</h3>
+        <p>A scenarios file that passed in March can silently regress in June. Re-probe on a schedule and fail loudly when a skill’s activation behavior drifts.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">--agent gemini · codex</div>
+        <h3>Cross-agent probing</h3>
+        <p>Skills now run across 30+ agents on one <code>SKILL.md</code>. Check that yours fires in each agent you ship to — not just Claude Code.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">tripwire.yaml</div>
+        <h3>Pluggable rules</h3>
+        <p><code>extends: tripwire:recommended</code>, ESLint-style. Turn rules off, change severity, or add org-specific checks as plain JS — applied everywhere, including the Action.</p>
+      </div>
+      <div class="card">
+        <div class="card-cmd">badges · --fix</div>
+        <h3>Badges &amp; auto-fix</h3>
+        <p>A live README coverage badge, plus one-command fixes for the mechanically-safe lint issues. Tripwire also ships <strong>as a skill</strong> and as an early <strong>VS Code extension</strong>.</p>
+      </div>
+      </div>
+    </section>
+
     <!-- Playground -->
     <section class="playground" id="playground">
       <div class="playground-head">
@@ -166,6 +207,7 @@ Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
   </footer>
 
   <script type="module" src="./main.js"></script>
-  <script defer src="/_vercel/insights/script.js"></script>
+  <!-- Analytics: enable Cloudflare Web Analytics for this Pages project in the
+       Cloudflare dashboard — it auto-injects its beacon, no snippet needed here. -->
 </body>
 </html>

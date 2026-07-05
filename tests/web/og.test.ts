@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { statusCopy, parseParams, buildCard } from '../../web/api/og.js';
+import { statusCopy, parseParams, buildCardHtml, buildBrandHtml } from '../../web/functions/_lib/og.js';
 
 describe('statusCopy', () => {
   it('reports fail with error count when errors are present', () => {
@@ -28,19 +28,20 @@ describe('statusCopy', () => {
 });
 
 describe('parseParams', () => {
-  it('parses skill, status, errors, warnings from the query string', () => {
+  it('parses skill, status, errors, warnings from the query string and flags a real result', () => {
     const p = parseParams('https://tripwire.bharath.sh/api/og?skill=my-skill&status=fail&errors=2&warnings=1');
-    expect(p).toEqual({ skill: 'my-skill', status: 'fail', errors: 2, warnings: 1 });
+    expect(p).toEqual({ skill: 'my-skill', status: 'fail', errors: 2, warnings: 1, hasResult: true });
   });
 
-  it('defaults to a pass card with no params', () => {
+  it('defaults to a brand card (hasResult false) with no params', () => {
     const p = parseParams('https://tripwire.bharath.sh/api/og');
-    expect(p).toEqual({ skill: 'skill', status: 'pass', errors: 0, warnings: 0 });
+    expect(p).toEqual({ skill: 'skill', status: 'pass', errors: 0, warnings: 0, hasResult: false });
   });
 
   it('falls back to pass for an unrecognized status value', () => {
     const p = parseParams('https://tripwire.bharath.sh/api/og?status=bogus');
     expect(p.status).toBe('pass');
+    expect(p.hasResult).toBe(true);
   });
 
   it('truncates an overly long skill name', () => {
@@ -49,10 +50,26 @@ describe('parseParams', () => {
   });
 });
 
-describe('buildCard', () => {
-  it('builds a satori-shaped element tree rooted at a div', () => {
-    const card = buildCard('my-skill', 'pass', 0, 0);
-    expect(card.type).toBe('div');
-    expect(Array.isArray(card.props.children)).toBe(true);
+describe('buildCardHtml', () => {
+  it('builds an HTML string containing the skill name and verdict label', () => {
+    const html = buildCardHtml('my-skill', 'fail', 2, 0);
+    expect(typeof html).toBe('string');
+    expect(html).toContain('my-skill');
+    expect(html).toContain('2 errors');
+    expect(html).toContain('display:flex');
+  });
+
+  it('escapes HTML-special characters in the skill name', () => {
+    const html = buildCardHtml('<script>', 'pass', 0, 0);
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>');
+  });
+});
+
+describe('buildBrandHtml', () => {
+  it('builds the branded landing-page card with the tagline', () => {
+    const html = buildBrandHtml();
+    expect(html).toContain('The quality gate for Agent Skills');
+    expect(html).toContain('display:flex');
   });
 });

@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lintRaw, badgeMessage, renderBadgeSvg } from '../../web/api/badge.js';
-
-describe('lintRaw', () => {
-  it('lints raw fetched markdown content directly', () => {
-    const raw = '---\nname: my-skill\ndescription: Use when doing X\n---\n\nSome real body content with a `code` example that is long enough to clear the word floor for this rule pretty easily honestly.\n';
-    expect(lintRaw(raw).errors).toEqual([]);
-  });
-});
+import { badgeMessage, renderBadgeSvg } from '../../web/functions/_lib/badge.js';
 
 describe('badgeMessage', () => {
   it('reports error count and fail color when errors are present', () => {
