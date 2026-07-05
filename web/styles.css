@@ -217,6 +217,13 @@ main, .nav, .footer { position: relative; z-index: 1; }
 }
 .pg-output { flex: 1; padding: 18px; font-family: var(--mono); font-size: 13.5px; overflow-y: auto; }
 
+.share-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px;
+}
+.share-row a.copy-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.share-status { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+
 .verdict {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 14px;

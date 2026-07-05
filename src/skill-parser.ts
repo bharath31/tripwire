@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import matter from 'gray-matter';
 import type { ParsedSkill } from './types.js';
@@ -25,4 +25,26 @@ export async function resolveSkillFilePath(arg: string): Promise<string> {
     } catch {}
   }
   throw new Error(`No skill .md file found in directory: ${arg}`);
+}
+
+const IGNORED_DIR_NAMES = new Set(['node_modules', '.git']);
+
+/** Recursively finds every SKILL.md (or skill.md) under a directory tree. */
+export async function discoverSkillFiles(rootDir: string): Promise<string[]> {
+  const found: string[] = [];
+
+  async function walk(dir: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (IGNORED_DIR_NAMES.has(entry.name)) continue;
+        await walk(join(dir, entry.name));
+      } else if (entry.isFile() && /^skill\.md$/i.test(entry.name)) {
+        found.push(join(dir, entry.name));
+      }
+    }
+  }
+
+  await walk(rootDir);
+  return found.sort();
 }

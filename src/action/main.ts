@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { parseSkill } from '../skill-parser.js';
 import { lint } from '../lint/rules.js';
+import { loadLintConfig } from '../lint/config.js';
 import { getChangedSkillFiles } from './changed-files.js';
 import { parsePatterns } from './changed-files.js';
 import { emitAnnotations, escapeMessage } from './annotate.js';
@@ -40,7 +41,8 @@ async function main(): Promise<void> {
     const raw = readFileSync(file, 'utf-8');
     const skill = await parseSkill(file);
     const skillName = skill.frontmatter.name ?? basename(dirname(file));
-    const lintResult = lint(skill);
+    const { ruleConfig, customRules } = await loadLintConfig(dirname(file));
+    const lintResult = lint(skill, ruleConfig, customRules);
     emitAnnotations(rel, raw, lintResult);
 
     const report: SkillReport = { skillName, file: rel, lint: lintResult };

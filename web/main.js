@@ -1,4 +1,5 @@
 import { lintSource } from './engine.js';
+import { buildShareUrl, readShareStateFromHash, buildShareCardUrl, skillNameFrom } from './share.js';
 
 const EXAMPLES = {
   good: `---
@@ -44,6 +45,11 @@ Run the thing and it works.`,
 
 const input = document.getElementById('pg-input');
 const output = document.getElementById('pg-output');
+const shareLinkBtn = document.getElementById('pg-share-link');
+const shareCardLink = document.getElementById('pg-share-card');
+const shareStatus = document.getElementById('pg-share-status');
+
+let lastReport = { skillName: 'skill', errors: [], warnings: [] };
 
 function iconFor(level) {
   return level === 'error' ? '✗' : '⚠';
@@ -85,16 +91,38 @@ function lintNow() {
   const raw = input.value;
   if (raw.trim() === '') {
     output.innerHTML = `<div class="empty">Paste a SKILL.md above to see lint results.</div>`;
+    lastReport = { skillName: 'skill', errors: [], warnings: [] };
+    updateShareCardLink();
     return;
   }
   try {
-    render(lintSource(raw));
+    const result = lintSource(raw);
+    lastReport = { skillName: skillNameFrom(raw), ...result };
+    render(result);
   } catch (err) {
     output.innerHTML = `<div class="verdict fail"><span>✗</span> Could not parse: ${escapeHtml(String(err))}</div>`;
+    lastReport = { skillName: 'skill', errors: [], warnings: [] };
   }
+  updateShareCardLink();
+}
+
+function updateShareCardLink() {
+  shareCardLink.href = buildShareCardUrl(lastReport);
 }
 
 input.addEventListener('input', lintNow);
+
+shareLinkBtn.addEventListener('click', async () => {
+  const url = buildShareUrl(input.value);
+  history.replaceState(null, '', url);
+  try {
+    await navigator.clipboard.writeText(url);
+    shareStatus.textContent = 'Link copied';
+  } catch {
+    shareStatus.textContent = 'Link updated in address bar';
+  }
+  setTimeout(() => (shareStatus.textContent = ''), 2000);
+});
 
 for (const chip of document.querySelectorAll('.chip')) {
   chip.addEventListener('click', () => {
@@ -103,7 +131,7 @@ for (const chip of document.querySelectorAll('.chip')) {
   });
 }
 
-for (const btn of document.querySelectorAll('.copy-btn')) {
+for (const btn of document.querySelectorAll('.copy-btn[data-copy]')) {
   btn.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(btn.dataset.copy);
@@ -116,6 +144,8 @@ for (const btn of document.querySelectorAll('.copy-btn')) {
   });
 }
 
-// Seed with the "problem" example so visitors see real output immediately.
-input.value = EXAMPLES.bad;
+// A shared link (#s=...) takes priority; otherwise seed with the "problem"
+// example so first-time visitors see real output immediately.
+const shared = readShareStateFromHash();
+input.value = shared !== null ? shared : EXAMPLES.bad;
 lintNow();

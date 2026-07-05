@@ -3613,12 +3613,12 @@ var require_isexe = __commonJS({
         if (typeof Promise !== "function") {
           throw new TypeError("callback not provided");
         }
-        return new Promise(function(resolve2, reject) {
+        return new Promise(function(resolve3, reject) {
           isexe(path6, options2 || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
-              resolve2(is);
+              resolve3(is);
             }
           });
         });
@@ -3684,27 +3684,27 @@ var require_which = __commonJS({
         opt = {};
       const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
       const found = [];
-      const step = (i2) => new Promise((resolve2, reject) => {
+      const step = (i2) => new Promise((resolve3, reject) => {
         if (i2 === pathEnv.length)
-          return opt.all && found.length ? resolve2(found) : reject(getNotFoundError(cmd));
+          return opt.all && found.length ? resolve3(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
         const pCmd = path6.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve2(subStep(p, i2, 0));
+        resolve3(subStep(p, i2, 0));
       });
-      const subStep = (p, i2, ii) => new Promise((resolve2, reject) => {
+      const subStep = (p, i2, ii) => new Promise((resolve3, reject) => {
         if (ii === pathExt.length)
-          return resolve2(step(i2 + 1));
+          return resolve3(step(i2 + 1));
         const ext = pathExt[ii];
         isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
           if (!er && is) {
             if (opt.all)
               found.push(p + ext);
             else
-              return resolve2(p + ext);
+              return resolve3(p + ext);
           }
-          return resolve2(subStep(p, i2, ii + 1));
+          return resolve3(subStep(p, i2, ii + 1));
         });
       });
       return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
@@ -4017,12 +4017,12 @@ var require_cross_spawn = __commonJS({
 });
 
 // src/action/main.ts
-import { dirname, join as join2, basename } from "node:path";
+import { dirname, join as join3, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { readFileSync as readFileSync3 } from "node:fs";
 
 // src/skill-parser.ts
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 var import_gray_matter = __toESM(require_gray_matter(), 1);
 async function parseSkill(filePath) {
   const raw = await readFile(filePath, "utf-8");
@@ -4034,178 +4034,134 @@ async function parseSkill(filePath) {
   };
 }
 
-// src/lint/rules.ts
+// src/lint/built-in-rules.ts
 var WORKFLOW_PATTERNS = ["step 1", "will then", "first do", "then it will"];
 var PLACEHOLDER_PATTERNS = ["TBD", "TODO", "implement later", "see task"];
-function lint(skill) {
+var namePresent = {
+  id: "name-present",
+  defaultLevel: "error",
+  check: (skill) => !skill.frontmatter.name ? "`name` field is missing from frontmatter" : null
+};
+var nameKebabCase = {
+  id: "name-kebab-case",
+  defaultLevel: "error",
+  check: (skill) => {
+    const name = skill.frontmatter.name;
+    if (!name) return null;
+    return /^[a-z0-9-]+$/.test(name) ? null : `\`name\` must be kebab-case (letters, numbers, hyphens only), got: "${name}"`;
+  }
+};
+var descriptionPresent = {
+  id: "description-present",
+  defaultLevel: "error",
+  check: (skill) => !skill.frontmatter.description ? "`description` field is missing from frontmatter" : null
+};
+var descriptionUseWhen = {
+  id: "description-use-when",
+  defaultLevel: "error",
+  check: (skill) => {
+    const desc = skill.frontmatter.description;
+    if (!desc) return null;
+    return desc.startsWith("Use when") ? null : '`description` must start with "Use when"';
+  }
+};
+var descriptionLength = {
+  id: "description-length",
+  defaultLevel: "error",
+  check: (skill) => {
+    const desc = skill.frontmatter.description;
+    if (!desc) return null;
+    return desc.length > 1024 ? `\`description\` is ${desc.length} chars (max 1024)` : null;
+  }
+};
+var descriptionNoWorkflow = {
+  id: "description-no-workflow",
+  defaultLevel: "error",
+  check: (skill) => {
+    const desc = skill.frontmatter.description;
+    if (!desc) return null;
+    const matched = WORKFLOW_PATTERNS.find((p) => desc.toLowerCase().includes(p));
+    return matched ? `\`description\` contains workflow summary language: "${matched}"` : null;
+  }
+};
+var noPlaceholders = {
+  id: "no-placeholders",
+  defaultLevel: "warning",
+  check: (skill) => {
+    const lowerBody = skill.body.toLowerCase();
+    const matched = PLACEHOLDER_PATTERNS.find((p) => lowerBody.includes(p.toLowerCase()));
+    return matched ? `body contains placeholder text: "${matched}"` : null;
+  }
+};
+var noCommentBlocks = {
+  id: "no-comment-blocks",
+  defaultLevel: "warning",
+  check: (skill) => {
+    let consecutive = 0;
+    for (const line of skill.body.split("\n")) {
+      if (line.trimStart().startsWith("//")) {
+        consecutive++;
+        if (consecutive >= 3) return "3 or more consecutive comment lines found in body";
+      } else {
+        consecutive = 0;
+      }
+    }
+    return null;
+  }
+};
+var bodyTooShort = {
+  id: "body-too-short",
+  defaultLevel: "warning",
+  check: (skill) => {
+    const wordCount = skill.body.split(/\s+/).filter(Boolean).length;
+    return wordCount < 100 ? `body is ${wordCount} words (minimum 100)` : null;
+  }
+};
+var noCodeExample = {
+  id: "no-code-example",
+  defaultLevel: "warning",
+  check: (skill) => {
+    const hasCode = /`[^`\n]+`/.test(skill.body) || /```/.test(skill.body);
+    return hasCode ? null : "no code or command example found in body (add a backtick snippet or fenced block)";
+  }
+};
+var builtInRules = [
+  namePresent,
+  nameKebabCase,
+  descriptionPresent,
+  descriptionUseWhen,
+  descriptionLength,
+  descriptionNoWorkflow,
+  noPlaceholders,
+  noCommentBlocks,
+  bodyTooShort,
+  noCodeExample
+];
+
+// src/lint/registry.ts
+function runRules(skill, rules, overrides = {}) {
   const errors = [];
   const warnings = [];
-  if (!skill.frontmatter.name) {
-    errors.push({ level: "error", rule: "name-present", message: "`name` field is missing from frontmatter" });
-  } else if (!/^[a-z0-9-]+$/.test(skill.frontmatter.name)) {
-    errors.push({ level: "error", rule: "name-kebab-case", message: `\`name\` must be kebab-case (letters, numbers, hyphens only), got: "${skill.frontmatter.name}"` });
-  }
-  if (!skill.frontmatter.description) {
-    errors.push({ level: "error", rule: "description-present", message: "`description` field is missing from frontmatter" });
-  } else {
-    const desc = skill.frontmatter.description;
-    if (!desc.startsWith("Use when")) {
-      errors.push({ level: "error", rule: "description-use-when", message: '`description` must start with "Use when"' });
-    }
-    if (desc.length > 1024) {
-      errors.push({ level: "error", rule: "description-length", message: `\`description\` is ${desc.length} chars (max 1024)` });
-    }
-    const lowerDesc = desc.toLowerCase();
-    const matchedWorkflow = WORKFLOW_PATTERNS.find((p) => lowerDesc.includes(p));
-    if (matchedWorkflow) {
-      errors.push({ level: "error", rule: "description-no-workflow", message: `\`description\` contains workflow summary language: "${matchedWorkflow}"` });
-    }
-  }
-  const lowerBody = skill.body.toLowerCase();
-  const matchedPlaceholder = PLACEHOLDER_PATTERNS.find((p) => lowerBody.includes(p.toLowerCase()));
-  if (matchedPlaceholder) {
-    warnings.push({ level: "warning", rule: "no-placeholders", message: `body contains placeholder text: "${matchedPlaceholder}"` });
-  }
-  const lines = skill.body.split("\n");
-  let consecutiveComments = 0;
-  let commentBlockFlagged = false;
-  for (const line of lines) {
-    if (line.trimStart().startsWith("//")) {
-      consecutiveComments++;
-      if (consecutiveComments >= 3 && !commentBlockFlagged) {
-        warnings.push({ level: "warning", rule: "no-comment-blocks", message: "3 or more consecutive comment lines found in body" });
-        commentBlockFlagged = true;
-      }
-    } else {
-      consecutiveComments = 0;
-    }
-  }
-  const wordCount = skill.body.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 100) {
-    warnings.push({ level: "warning", rule: "body-too-short", message: `body is ${wordCount} words (minimum 100)` });
-  }
-  const hasCode = /`[^`\n]+`/.test(skill.body) || /```/.test(skill.body);
-  if (!hasCode) {
-    warnings.push({ level: "warning", rule: "no-code-example", message: "no code or command example found in body (add a backtick snippet or fenced block)" });
+  for (const rule of rules) {
+    const level = overrides[rule.id] ?? rule.defaultLevel;
+    if (level === "off") continue;
+    const message = rule.check(skill);
+    if (message === null) continue;
+    const entry = { level, rule: rule.id, message };
+    if (level === "error") errors.push(entry);
+    else warnings.push(entry);
   }
   return { errors, warnings };
 }
 
-// src/action/changed-files.ts
-import { execFileSync } from "node:child_process";
-function globToRegExp(pattern) {
-  let re = "";
-  for (let i2 = 0; i2 < pattern.length; i2++) {
-    const c3 = pattern[i2];
-    if (c3 === "*") {
-      if (pattern[i2 + 1] === "*") {
-        i2++;
-        if (pattern[i2 + 1] === "/") {
-          re += "(?:.*/)?";
-          i2++;
-        } else {
-          re += ".*";
-        }
-      } else {
-        re += "[^/]*";
-      }
-    } else if (".+?^${}()|[]\\".includes(c3)) {
-      re += "\\" + c3;
-    } else {
-      re += c3;
-    }
-  }
-  return new RegExp("^" + re + "$");
-}
-function parsePatterns(raw) {
-  return raw.split(/[,\n]/).map((p) => p.trim()).filter((p) => p.length > 0);
-}
-function filterByPatterns(files, patterns) {
-  const regexes = patterns.map(globToRegExp);
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const file of files) {
-    if (!seen.has(file) && regexes.some((re) => re.test(file))) {
-      seen.add(file);
-      out.push(file);
-    }
-  }
-  return out;
-}
-function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
-  const out = execFileSync(
-    "git",
-    ["diff", "--name-only", "--diff-filter=ACMR", `${base}...${head}`],
-    { cwd, encoding: "utf-8" }
-  );
-  const files = out.split("\n").map((f) => f.trim()).filter(Boolean);
-  return filterByPatterns(files, patterns);
+// src/lint/rules.ts
+function lint(skill, ruleConfig, extraRules = []) {
+  return runRules(skill, [...builtInRules, ...extraRules], ruleConfig);
 }
 
-// src/action/locate.ts
-var PLACEHOLDERS = ["TBD", "TODO", "implement later", "see task"];
-function locateFinding(raw, finding) {
-  const lines = raw.split("\n");
-  if (finding.rule.startsWith("name")) {
-    const i2 = lines.findIndex((l) => /^name:/.test(l.trimStart()));
-    if (i2 >= 0) return i2 + 1;
-  }
-  if (finding.rule.startsWith("description")) {
-    const i2 = lines.findIndex((l) => /^description:/.test(l.trimStart()));
-    if (i2 >= 0) return i2 + 1;
-  }
-  if (finding.rule === "no-placeholders") {
-    const lower = lines.map((l) => l.toLowerCase());
-    for (let i2 = 0; i2 < lines.length; i2++) {
-      if (PLACEHOLDERS.some((p) => lower[i2].includes(p.toLowerCase()))) return i2 + 1;
-    }
-  }
-  if (finding.rule === "no-comment-blocks") {
-    let run = 0;
-    for (let i2 = 0; i2 < lines.length; i2++) {
-      if (lines[i2].trimStart().startsWith("//")) {
-        run++;
-        if (run >= 3) return i2 - 1;
-      } else {
-        run = 0;
-      }
-    }
-  }
-  const bodyStart = firstBodyLine(lines);
-  if (bodyStart >= 0) return bodyStart + 1;
-  return 1;
-}
-function firstBodyLine(lines) {
-  let i2 = 0;
-  if (lines[0]?.trim() === "---") {
-    i2 = 1;
-    while (i2 < lines.length && lines[i2].trim() !== "---") i2++;
-    i2++;
-  }
-  while (i2 < lines.length && lines[i2].trim() === "") i2++;
-  return i2 < lines.length ? i2 : -1;
-}
-
-// src/action/annotate.ts
-function escapeMessage(msg) {
-  return msg.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-}
-function formatAnnotation(file, line, finding) {
-  const cmd = finding.level === "error" ? "error" : "warning";
-  return `::${cmd} file=${file},line=${line},title=tripwire/${finding.rule}::${escapeMessage(finding.message)}`;
-}
-function emitAnnotations(file, raw, result, log = console.log) {
-  for (const finding of [...result.errors, ...result.warnings]) {
-    log(formatAnnotation(file, locateFinding(raw, finding), finding));
-  }
-}
-
-// src/action/probe.ts
-import { mkdir, copyFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
-
-// src/test/scenario-runner.ts
+// src/lint/config.ts
 import { readFile as readFile2 } from "node:fs/promises";
+import { join } from "node:path";
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 function getDefaultExportFromCjs(x) {
@@ -7265,9 +7221,181 @@ var {
   safeDump
 } = yaml2;
 
+// src/lint/presets.ts
+var PRESETS = {
+  "tripwire:recommended": {}
+};
+function resolvePreset(name) {
+  const preset = PRESETS[name];
+  if (!preset) {
+    throw new Error(`Unknown preset "${name}" in \`extends\` (known presets: ${Object.keys(PRESETS).join(", ")})`);
+  }
+  return preset;
+}
+
+// src/lint/plugin-loader.ts
+import { pathToFileURL } from "node:url";
+import { isAbsolute, resolve } from "node:path";
+function isValidRule(x) {
+  if (!x || typeof x !== "object") return false;
+  const r = x;
+  return typeof r.id === "string" && (r.defaultLevel === "error" || r.defaultLevel === "warning") && typeof r.check === "function";
+}
+async function loadCustomRules(filePath, baseDir = process.cwd()) {
+  const absPath = isAbsolute(filePath) ? filePath : resolve(baseDir, filePath);
+  const mod = await import(pathToFileURL(absPath).href);
+  const exported = mod.rules ?? mod.default ?? [];
+  const candidates = Array.isArray(exported) ? exported : [exported];
+  const rules = [];
+  for (const c3 of candidates) {
+    if (isValidRule(c3)) {
+      rules.push(c3);
+    } else {
+      console.warn(`tripwire: skipping invalid custom rule in ${filePath} (expected { id, defaultLevel, check })`);
+    }
+  }
+  return rules;
+}
+
+// src/lint/config.ts
+async function loadLintConfig(cwd = process.cwd()) {
+  let raw;
+  try {
+    const text = await readFile2(join(cwd, "tripwire.yaml"), "utf-8");
+    raw = yaml2.load(text, { schema: yaml2.DEFAULT_SCHEMA }) ?? {};
+  } catch {
+    return { ruleConfig: {}, customRules: [] };
+  }
+  const extendsNames = raw.extends ? Array.isArray(raw.extends) ? raw.extends : [raw.extends] : [];
+  let ruleConfig = {};
+  for (const name of extendsNames) {
+    ruleConfig = { ...ruleConfig, ...resolvePreset(name) };
+  }
+  ruleConfig = { ...ruleConfig, ...raw.rules ?? {} };
+  const customRules = [];
+  for (const pluginPath of raw.plugins ?? []) {
+    customRules.push(...await loadCustomRules(pluginPath, cwd));
+  }
+  return { ruleConfig, customRules };
+}
+
+// src/action/changed-files.ts
+import { execFileSync } from "node:child_process";
+function globToRegExp(pattern) {
+  let re = "";
+  for (let i2 = 0; i2 < pattern.length; i2++) {
+    const c3 = pattern[i2];
+    if (c3 === "*") {
+      if (pattern[i2 + 1] === "*") {
+        i2++;
+        if (pattern[i2 + 1] === "/") {
+          re += "(?:.*/)?";
+          i2++;
+        } else {
+          re += ".*";
+        }
+      } else {
+        re += "[^/]*";
+      }
+    } else if (".+?^${}()|[]\\".includes(c3)) {
+      re += "\\" + c3;
+    } else {
+      re += c3;
+    }
+  }
+  return new RegExp("^" + re + "$");
+}
+function parsePatterns(raw) {
+  return raw.split(/[,\n]/).map((p) => p.trim()).filter((p) => p.length > 0);
+}
+function filterByPatterns(files, patterns) {
+  const regexes = patterns.map(globToRegExp);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const file of files) {
+    if (!seen.has(file) && regexes.some((re) => re.test(file))) {
+      seen.add(file);
+      out.push(file);
+    }
+  }
+  return out;
+}
+function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
+  const out = execFileSync(
+    "git",
+    ["diff", "--name-only", "--diff-filter=ACMR", `${base}...${head}`],
+    { cwd, encoding: "utf-8" }
+  );
+  const files = out.split("\n").map((f) => f.trim()).filter(Boolean);
+  return filterByPatterns(files, patterns);
+}
+
+// src/action/locate.ts
+var PLACEHOLDERS = ["TBD", "TODO", "implement later", "see task"];
+function locateFinding(raw, finding) {
+  const lines = raw.split("\n");
+  if (finding.rule.startsWith("name")) {
+    const i2 = lines.findIndex((l) => /^name:/.test(l.trimStart()));
+    if (i2 >= 0) return i2 + 1;
+  }
+  if (finding.rule.startsWith("description")) {
+    const i2 = lines.findIndex((l) => /^description:/.test(l.trimStart()));
+    if (i2 >= 0) return i2 + 1;
+  }
+  if (finding.rule === "no-placeholders") {
+    const lower = lines.map((l) => l.toLowerCase());
+    for (let i2 = 0; i2 < lines.length; i2++) {
+      if (PLACEHOLDERS.some((p) => lower[i2].includes(p.toLowerCase()))) return i2 + 1;
+    }
+  }
+  if (finding.rule === "no-comment-blocks") {
+    let run = 0;
+    for (let i2 = 0; i2 < lines.length; i2++) {
+      if (lines[i2].trimStart().startsWith("//")) {
+        run++;
+        if (run >= 3) return i2 - 1;
+      } else {
+        run = 0;
+      }
+    }
+  }
+  const bodyStart = firstBodyLine(lines);
+  if (bodyStart >= 0) return bodyStart + 1;
+  return 1;
+}
+function firstBodyLine(lines) {
+  let i2 = 0;
+  if (lines[0]?.trim() === "---") {
+    i2 = 1;
+    while (i2 < lines.length && lines[i2].trim() !== "---") i2++;
+    i2++;
+  }
+  while (i2 < lines.length && lines[i2].trim() === "") i2++;
+  return i2 < lines.length ? i2 : -1;
+}
+
+// src/action/annotate.ts
+function escapeMessage(msg) {
+  return msg.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+function formatAnnotation(file, line, finding) {
+  const cmd = finding.level === "error" ? "error" : "warning";
+  return `::${cmd} file=${file},line=${line},title=tripwire/${finding.rule}::${escapeMessage(finding.message)}`;
+}
+function emitAnnotations(file, raw, result, log = console.log) {
+  for (const finding of [...result.errors, ...result.warnings]) {
+    log(formatAnnotation(file, locateFinding(raw, finding), finding));
+  }
+}
+
+// src/action/probe.ts
+import { mkdir, copyFile } from "node:fs/promises";
+import { join as join2, resolve as resolve2 } from "node:path";
+
 // src/test/scenario-runner.ts
+import { readFile as readFile3 } from "node:fs/promises";
 async function runScenariosFromFile(scenariosPath, adapter, onProgress) {
-  const raw = await readFile2(scenariosPath, "utf-8");
+  const raw = await readFile3(scenariosPath, "utf-8");
   const file = yaml2.load(raw, { schema: yaml2.DEFAULT_SCHEMA });
   const results = [];
   const total = file.scenarios.length;
@@ -8828,8 +8956,8 @@ var disconnect = (anyProcess) => {
 // node_modules/execa/lib/utils/deferred.js
 var createDeferred = () => {
   const methods = {};
-  const promise = new Promise((resolve2, reject) => {
-    Object.assign(methods, { resolve: resolve2, reject });
+  const promise = new Promise((resolve3, reject) => {
+    Object.assign(methods, { resolve: resolve3, reject });
   });
   return Object.assign(promise, methods);
 };
@@ -13471,11 +13599,11 @@ var addConcurrentStream = (concurrentStreams, stream, waitName) => {
   const promises = weakMap.get(stream);
   const promise = createDeferred();
   promises.push(promise);
-  const resolve2 = promise.resolve.bind(promise);
-  return { resolve: resolve2, promises };
+  const resolve3 = promise.resolve.bind(promise);
+  return { resolve: resolve3, promises };
 };
-var waitForConcurrentStreams = async ({ resolve: resolve2, promises }, subprocess) => {
-  resolve2();
+var waitForConcurrentStreams = async ({ resolve: resolve3, promises }, subprocess) => {
+  resolve3();
   const [isSubprocessExit] = await Promise.race([
     Promise.allSettled([true, subprocess]),
     Promise.all([false, ...promises])
@@ -14175,9 +14303,9 @@ async function probeSkill(input2) {
 }
 async function stageSkill(skillFilePath, skillName, workspace) {
   const safe = safeSkillName(skillName);
-  const target = join(workspace, ".claude", "skills", safe, "SKILL.md");
-  if (resolve(target) === resolve(skillFilePath)) return;
-  await mkdir(join(workspace, ".claude", "skills", safe), { recursive: true });
+  const target = join2(workspace, ".claude", "skills", safe, "SKILL.md");
+  if (resolve2(target) === resolve2(skillFilePath)) return;
+  await mkdir(join2(workspace, ".claude", "skills", safe), { recursive: true });
   await copyFile(skillFilePath, target);
 }
 function classifyRegressions(results) {
@@ -14311,11 +14439,12 @@ async function main() {
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const reports = [];
   for (const rel of changed) {
-    const file = join2(cwd, rel);
+    const file = join3(cwd, rel);
     const raw = readFileSync3(file, "utf-8");
     const skill = await parseSkill(file);
     const skillName = skill.frontmatter.name ?? basename(dirname(file));
-    const lintResult = lint(skill);
+    const { ruleConfig, customRules } = await loadLintConfig(dirname(file));
+    const lintResult = lint(skill, ruleConfig, customRules);
     emitAnnotations(rel, raw, lintResult);
     const report = { skillName, file: rel, lint: lintResult };
     if (probeEnabled) {
@@ -14324,7 +14453,7 @@ async function main() {
         report.probeSkipped = reason;
         console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
       } else {
-        const scenariosPath = join2(dirname(file), "tripwire-scenarios.yaml");
+        const scenariosPath = join3(dirname(file), "tripwire-scenarios.yaml");
         if (!existsSync(scenariosPath)) {
           const reason = "no tripwire-scenarios.yaml (run `tripwire analyze` locally and commit it)";
           report.probeSkipped = reason;

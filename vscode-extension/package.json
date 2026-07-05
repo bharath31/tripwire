@@ -1,0 +1,34 @@
+{
+  "name": "tripwire-skills-vscode",
+  "displayName": "Tripwire for Agent Skills",
+  "description": "Lint SKILL.md files as you write them — squiggles for description bugs, coverage gaps, and best-practice issues, right in the editor.",
+  "version": "0.1.0",
+  "publisher": "bharath31",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bharath31/tripwire"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Linters"],
+  "keywords": ["agent skills", "claude", "skill.md", "lint"],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {},
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  }
+}
