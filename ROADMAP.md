@@ -20,8 +20,9 @@ where a silent misfire is invisible until a user reports "it just didn't do the 
       caught and fixed a deeper bug: the built `dist/` was gitignored and never actually being
       published, so the old package name would have installed a binary that didn't exist either
       way — fixed with an explicit `files` allowlist and a `prepublishOnly` build step.
-- [x] Usage measurement on the playground (Vercel Web Analytics) — enable it for the project in
-      the Vercel dashboard for data to start flowing.
+- [x] Usage measurement on the playground (Cloudflare Web Analytics — the site is hosted on
+      Cloudflare Pages) — flip the toggle in the Cloudflare dashboard and the beacon auto-injects;
+      no snippet needed in the page. Until that toggle is on, no traffic data flows.
 - [x] Shareable coverage reports from the playground (a `#s=` deep link plus an `/api/og`
       share-card image endpoint).
 - [x] `tripwire init` — scaffold the workflow file, lint immediately, and optionally seed

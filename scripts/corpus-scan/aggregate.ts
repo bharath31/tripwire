@@ -3,7 +3,24 @@ import { lint } from '../../src/lint/rules.js';
 import type { LintResult, ParsedSkill } from '../../src/types.js';
 
 export function lintRaw(raw: string, filePath: string): LintResult {
-  const parsed = matter(raw);
+  let parsed;
+  try {
+    parsed = matter(raw);
+  } catch (err) {
+    // Real published skills ship frontmatter that isn't valid YAML (unquoted colons,
+    // stray quotes in the description). A naive parser dies; we count it as a finding
+    // instead — an unparseable SKILL.md never loads, so this is the most severe failure.
+    return {
+      errors: [
+        {
+          level: 'error',
+          rule: 'frontmatter-unparseable',
+          message: `Frontmatter is not valid YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
+        },
+      ],
+      warnings: [],
+    };
+  }
   const skill: ParsedSkill = {
     frontmatter: parsed.data as ParsedSkill['frontmatter'],
     body: parsed.content.trim(),
