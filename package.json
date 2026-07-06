@@ -1,8 +1,9 @@
 {
   "name": "tripwire-skills",
-  "version": "0.1.0",
-  "description": "Lint and coverage-probe Agent Skills — does your skill trip on the right prompts?",
+  "version": "0.1.1",
+  "description": "Lint and activation-test Agent Skills (SKILL.md) — does your skill fire on the right prompts?",
   "type": "module",
+  "license": "MIT",
   "homepage": "https://tripwire.bharath.sh",
   "repository": {
     "type": "git",
@@ -17,9 +18,18 @@
     "claude-code",
     "skill",
     "skill-md",
+    "skill.md",
     "linter",
+    "lint",
     "ci",
-    "ai-agents"
+    "github-action",
+    "ai-agents",
+    "agent-experience",
+    "mcp",
+    "codex",
+    "gemini-cli",
+    "activation-testing",
+    "prompt-testing"
   ],
   "bin": {
     "tripwire": "./dist/cli.js"
