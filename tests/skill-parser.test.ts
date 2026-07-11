@@ -84,3 +84,37 @@ describe('discoverSkillFiles', () => {
     await rm(tmp, { recursive: true });
   });
 });
+
+describe('resolveLintTargets', () => {
+  it('returns a file path as-is', async () => {
+    const { resolveLintTargets } = await import('../src/skill-parser.js');
+    const files = await resolveLintTargets(fixturePath('valid-skill.md'));
+    expect(files).toEqual([fixturePath('valid-skill.md')]);
+  });
+
+  it('returns the direct SKILL.md of a skill directory', async () => {
+    const { resolveLintTargets } = await import('../src/skill-parser.js');
+    const dir = await mkdtemp(join(os.tmpdir(), 'tw-lint-'));
+    await writeFile(join(dir, 'SKILL.md'), '---\nname: a\n---\nbody');
+    const files = await resolveLintTargets(dir);
+    expect(files).toEqual([join(dir, 'SKILL.md')]);
+    await rm(dir, { recursive: true });
+  });
+
+  it('discovers nested <name>/SKILL.md files under a skills root (the .claude/skills layout)', async () => {
+    const { resolveLintTargets } = await import('../src/skill-parser.js');
+    const dir = await mkdtemp(join(os.tmpdir(), 'tw-lint-'));
+    await mkdir(join(dir, 'one'), { recursive: true });
+    await mkdir(join(dir, 'two'), { recursive: true });
+    await writeFile(join(dir, 'one', 'SKILL.md'), '---\nname: one\n---\nbody');
+    await writeFile(join(dir, 'two', 'skill.md'), '---\nname: two\n---\nbody');
+    const files = await resolveLintTargets(dir);
+    expect(files).toHaveLength(2);
+    await rm(dir, { recursive: true });
+  });
+
+  it('throws a friendly error for a missing path', async () => {
+    const { resolveLintTargets } = await import('../src/skill-parser.js');
+    await expect(resolveLintTargets('/definitely/not/here')).rejects.toThrow('No such file or directory');
+  });
+});

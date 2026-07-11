@@ -2,7 +2,8 @@ import { Command } from 'commander';
 import * as cliProgress from 'cli-progress';
 import chalk from 'chalk';
 import { dirname, join } from 'node:path';
-import { parseSkill, resolveSkillFilePath, discoverSkillFiles } from './skill-parser.js';
+import { parseSkill, resolveSkillFilePath, resolveLintTargets, discoverSkillFiles } from './skill-parser.js';
+import pkg from '../package.json';
 import { lint } from './lint/rules.js';
 import { formatLintResult, lintExitCode } from './lint/reporter.js';
 import { fixSkill } from './lint/fix.js';
@@ -50,15 +51,34 @@ const program = new Command();
 program
   .name('tripwire')
   .description('Lint and coverage-probe Agent Skills')
-  .version('0.1.0');
+  .version(pkg.version);
 
-program
-  .command('lint <skill-path>')
-  .description('Static rules check on a skill file')
-  .option('--fix', 'Auto-fix mechanically safe issues (currently: name-kebab-case only)')
-  .action(async (skillPath: string, opts: { fix?: boolean }) => {
-    const filePath = await resolveSkillFilePath(skillPath);
+const DEFAULT_SKILLS_DIRS = ['.claude/skills', 'skills', '.agents/skills'];
 
+function findDefaultSkillsDir(): string | undefined {
+  return DEFAULT_SKILLS_DIRS.find((d) => existsSync(d));
+}
+
+async function runLint(target: string, opts: { fix?: boolean }): Promise<never> {
+  let files: string[];
+  try {
+    files = await resolveLintTargets(target);
+  } catch (err) {
+    console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
+  }
+  if (files.length === 0) {
+    console.error(chalk.red(`Error: no SKILL.md found under ${target}`));
+    console.error(chalk.dim('Expected a skill file, or a directory like .claude/skills/<name>/SKILL.md'));
+    process.exit(1);
+  }
+
+  let exitCode: 0 | 1 = 0;
+  let errors = 0;
+  let warnings = 0;
+  let clean = 0;
+
+  for (const filePath of files) {
     if (opts.fix) {
       const raw = await readFile(filePath, 'utf-8');
       const fixResult = fixSkill(raw);
@@ -67,17 +87,56 @@ program
         console.log(chalk.bold('Fixed:'));
         for (const c of fixResult.changes) console.log(`  ${chalk.green('✓')} ${c.message}`);
         console.log('');
-      } else {
+      } else if (files.length === 1) {
         console.log(chalk.dim('No auto-fixable issues found.'));
         console.log('');
       }
     }
 
-    const skill = await parseSkill(filePath);
+    let skill;
+    try {
+      skill = await parseSkill(filePath);
+    } catch (err) {
+      console.log(`${chalk.bold('Linting:')} ${filePath}`);
+      console.log(`  ${chalk.red('✗')} ${chalk.red('parse-error')}: ${err instanceof Error ? err.message : String(err)}`);
+      console.log('');
+      errors += 1;
+      exitCode = 1;
+      continue;
+    }
     const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
     const result = lint(skill, ruleConfig, customRules);
     console.log(formatLintResult(skill.frontmatter.name ?? filePath, result));
-    process.exit(lintExitCode(result));
+    if (files.length > 1) console.log('');
+    errors += result.errors.length;
+    warnings += result.warnings.length;
+    if (result.errors.length === 0 && result.warnings.length === 0) clean += 1;
+    if (lintExitCode(result) === 1) exitCode = 1;
+  }
+
+  if (files.length > 1) {
+    const parts = [
+      errors > 0 ? chalk.red(`${errors} error${errors === 1 ? '' : 's'}`) : null,
+      warnings > 0 ? chalk.yellow(`${warnings} warning${warnings === 1 ? '' : 's'}`) : null,
+      chalk.green(`${clean} clean`),
+    ].filter(Boolean);
+    console.log(`${chalk.bold(`${files.length} skills`)} — ${parts.join(', ')}`);
+  }
+  process.exit(exitCode);
+}
+
+program
+  .command('lint [skill-path]')
+  .description('Static rules check on a skill file, or every skill under a directory')
+  .option('--fix', 'Auto-fix mechanically safe issues (currently: name-kebab-case only)')
+  .action(async (skillPath: string | undefined, opts: { fix?: boolean }) => {
+    const target = skillPath ?? findDefaultSkillsDir();
+    if (!target) {
+      console.error(chalk.red('Error: no skill path given and no skills directory found.'));
+      console.error(chalk.dim(`Looked for: ${DEFAULT_SKILLS_DIRS.join(', ')} — or pass a path: tripwire lint path/to/SKILL.md`));
+      process.exit(1);
+    }
+    await runLint(target, opts);
   });
 
 program
@@ -367,5 +426,17 @@ program
     console.log(renderEvalReport(skillName, results));
     process.exit(evalExitCode(results));
   });
+
+// Bare `tripwire` in a repo with skills: lint them all — the 10-second first run.
+// No skills found → the usual help.
+program.action(async () => {
+  const dir = findDefaultSkillsDir();
+  if (!dir) {
+    program.help();
+  }
+  console.log(chalk.dim(`tripwire ${pkg.version} — found ${dir}, linting every skill (more: tripwire --help)`));
+  console.log('');
+  await runLint(dir!, {});
+});
 
 program.parseAsync();

@@ -1,6 +1,6 @@
 {
   "name": "tripwire-skills",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lint and activation-test Agent Skills (SKILL.md) — does your skill fire on the right prompts?",
   "type": "module",
   "license": "MIT",

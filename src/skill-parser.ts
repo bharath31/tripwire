@@ -27,6 +27,30 @@ export async function resolveSkillFilePath(arg: string): Promise<string> {
   throw new Error(`No skill .md file found in directory: ${arg}`);
 }
 
+/**
+ * Resolve a lint target into one or more skill files. A file returns itself; a
+ * directory returns its direct SKILL.md if present, otherwise every SKILL.md
+ * found recursively (the standard `.claude/skills/<name>/SKILL.md` layout).
+ */
+export async function resolveLintTargets(arg: string): Promise<string[]> {
+  let s;
+  try {
+    s = await stat(arg);
+  } catch {
+    throw new Error(`No such file or directory: ${arg}`);
+  }
+  if (!s.isDirectory()) return [arg];
+
+  for (const candidate of ['SKILL.md', 'skill.md']) {
+    try {
+      const p = join(arg, candidate);
+      await stat(p);
+      return [p];
+    } catch {}
+  }
+  return discoverSkillFiles(arg);
+}
+
 const IGNORED_DIR_NAMES = new Set(['node_modules', '.git']);
 
 /** Recursively finds every SKILL.md (or skill.md) under a directory tree. */
