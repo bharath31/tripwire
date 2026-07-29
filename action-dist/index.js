@@ -4021,8 +4021,8 @@ var require_cross_spawn = __commonJS({
 });
 
 // src/action/main.ts
-import { dirname as dirname2, join as join4, basename } from "node:path";
-import { existsSync } from "node:fs";
+import { dirname as dirname3, join as join5, basename as basename2 } from "node:path";
+import { existsSync as existsSync2 } from "node:fs";
 import { readFileSync as readFileSync3 } from "node:fs";
 
 // src/skill-parser.ts
@@ -7285,6 +7285,8 @@ async function loadLintConfig(cwd = process.cwd()) {
 
 // src/action/changed-files.ts
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { basename, dirname, join as join2 } from "node:path";
 function globToRegExp(pattern) {
   let re = "";
   for (let i2 = 0; i2 < pattern.length; i2++) {
@@ -7324,6 +7326,11 @@ function filterByPatterns(files, patterns) {
   }
   return out;
 }
+function skillFilesForChanges(files, patterns, fileExists = existsSync) {
+  const directSkills = filterByPatterns(files, patterns);
+  const scenarioSkills = files.filter((file) => basename(file) === "tripwire-scenarios.yaml").map((file) => join2(dirname(file), "SKILL.md")).filter(fileExists);
+  return filterByPatterns([...directSkills, ...scenarioSkills], patterns);
+}
 function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
   const out = execFileSync(
     "git",
@@ -7331,7 +7338,7 @@ function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
     { cwd, encoding: "utf-8" }
   );
   const files = out.split("\n").map((f) => f.trim()).filter(Boolean);
-  return filterByPatterns(files, patterns);
+  return skillFilesForChanges(files, patterns, (file) => existsSync(join2(cwd, file)));
 }
 
 // src/action/locate.ts
@@ -14333,7 +14340,7 @@ function expectedActivationFor(prompt) {
 
 // src/probe-workspace.ts
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join as join2 } from "node:path";
+import { join as join3 } from "node:path";
 import { tmpdir } from "node:os";
 var AGENT_SKILL_ROOTS = {
   claude: [".claude", "skills"],
@@ -14348,9 +14355,9 @@ async function createProbeWorkspace(agent, skillFilePath, skillName) {
   if (!rootParts) {
     throw new Error(`Cannot stage skill for unknown agent "${agent}"`);
   }
-  const cwd = await mkdtemp(join2(tmpdir(), "tripwire-probe-"));
-  const skillDir = join2(cwd, ...rootParts, safeSkillName(skillName));
-  const skillPath = join2(skillDir, "SKILL.md");
+  const cwd = await mkdtemp(join3(tmpdir(), "tripwire-probe-"));
+  const skillDir = join3(cwd, ...rootParts, safeSkillName(skillName));
+  const skillPath = join3(skillDir, "SKILL.md");
   await mkdir(skillDir, { recursive: true });
   await copyFile(skillFilePath, skillPath);
   return {
@@ -14527,7 +14534,7 @@ function readContext(env, readEventFile) {
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir as mkdir2, readFile as readFile4, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join as join3 } from "node:path";
+import { dirname as dirname2, join as join4 } from "node:path";
 
 // package.json
 var package_default = {
@@ -14618,8 +14625,8 @@ function hashIdentity(value) {
   return createHash("sha256").update(`tripwire-v1:${value}`).digest("hex").slice(0, 32);
 }
 function statePath(env, homeDir) {
-  const configRoot = env.XDG_CONFIG_HOME || join3(homeDir, ".config");
-  return join3(configRoot, "tripwire", "telemetry.json");
+  const configRoot = env.XDG_CONFIG_HOME || join4(homeDir, ".config");
+  return join4(configRoot, "tripwire", "telemetry.json");
 }
 async function localIdentity(env, homeDir) {
   const path6 = statePath(env, homeDir);
@@ -14635,7 +14642,7 @@ async function localIdentity(env, homeDir) {
   } catch {
   }
   state ??= { installationId: randomUUID(), noticeShown: false };
-  await mkdir2(dirname(path6), { recursive: true });
+  await mkdir2(dirname2(path6), { recursive: true });
   await writeFile(path6, JSON.stringify(state, null, 2) + "\n", { mode: 384 });
   return {
     id: hashIdentity(state.installationId),
@@ -14726,11 +14733,11 @@ async function main() {
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const reports = [];
   for (const rel of changed) {
-    const file = join4(cwd, rel);
+    const file = join5(cwd, rel);
     const raw = readFileSync3(file, "utf-8");
     const skill = await parseSkill(file);
-    const skillName = skill.frontmatter.name ?? basename(dirname2(file));
-    const { ruleConfig, customRules } = await loadLintConfig(dirname2(file));
+    const skillName = skill.frontmatter.name ?? basename2(dirname3(file));
+    const { ruleConfig, customRules } = await loadLintConfig(dirname3(file));
     const lintResult = lint(skill, ruleConfig, customRules);
     emitAnnotations(rel, raw, lintResult);
     const report = { skillName, file: rel, lint: lintResult };
@@ -14740,8 +14747,8 @@ async function main() {
         report.probeSkipped = reason;
         console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
       } else {
-        const scenariosPath = join4(dirname2(file), "tripwire-scenarios.yaml");
-        if (!existsSync(scenariosPath)) {
+        const scenariosPath = join5(dirname3(file), "tripwire-scenarios.yaml");
+        if (!existsSync2(scenariosPath)) {
           const reason = "no tripwire-scenarios.yaml (run `tripwire analyze` locally and commit it)";
           report.probeSkipped = reason;
           console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);

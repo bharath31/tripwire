@@ -40,6 +40,28 @@ console.log(JSON.stringify({
   return `${bin}:${process.env.PATH ?? ''}`;
 }
 
+async function lintFailingSkill(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'tripwire-inline-skill-'));
+  dirs.push(root);
+  const skillPath = join(root, 'SKILL.md');
+  await writeFile(
+    skillPath,
+    `---
+name: my-skill
+description: Handles code tasks
+---
+
+## Instructions
+
+Read the relevant code carefully, follow the repository conventions, and keep the change focused.
+Run \`npm run build\` and the complete test suite before reporting that the task is finished.
+Consider error cases and avoid broad rewrites that make the review harder than necessary.
+`,
+    'utf-8',
+  );
+  return skillPath;
+}
+
 describe('tripwire test --prompt (integration)', () => {
   it('runs one real adapter process without a scenarios file', async () => {
     const result = await execa(
@@ -68,5 +90,27 @@ describe('tripwire test --prompt (integration)', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toContain('FALSE POSITIVES');
+  });
+
+  it('fails the behavioral gate when static lint fails', async () => {
+    const result = await execa(
+      'node',
+      [
+        CLI,
+        'test',
+        await lintFailingSkill(),
+        '--prompt',
+        'help with code',
+        '--expect',
+        'activate',
+      ],
+      {
+        env: { PATH: await fakeClaudePath(), TRIPWIRE_TELEMETRY: '0' },
+        reject: false,
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('description-use-when');
   });
 });

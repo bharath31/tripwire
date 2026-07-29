@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '**/SKILL.md'
+      - '**/tripwire-scenarios.yaml'
       - 'tests/fixtures/**'
 jobs:
   skills:

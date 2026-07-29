@@ -4,6 +4,7 @@ export interface SkillDriftResult {
   gaps: number;
   falsePositives: number;
   infrastructureErrors?: number;
+  lintErrors?: number;
 }
 
 export interface SkippedSkill {
@@ -22,7 +23,10 @@ export function summarizeDrift(checked: SkillDriftResult[], skipped: SkippedSkil
     checked,
     skipped,
     hasDrift: checked.some(
-      (r) => r.gaps > 0 || r.falsePositives > 0 || (r.infrastructureErrors ?? 0) > 0,
+      (r) => r.gaps > 0
+        || r.falsePositives > 0
+        || (r.infrastructureErrors ?? 0) > 0
+        || (r.lintErrors ?? 0) > 0,
     ),
   };
 }
@@ -30,10 +34,16 @@ export function summarizeDrift(checked: SkillDriftResult[], skipped: SkippedSkil
 export function renderDriftSummary(summary: DriftSummary): string {
   const lines: string[] = [];
   const drifted = summary.checked.filter(
-    (r) => r.gaps > 0 || r.falsePositives > 0 || (r.infrastructureErrors ?? 0) > 0,
+    (r) => r.gaps > 0
+      || r.falsePositives > 0
+      || (r.infrastructureErrors ?? 0) > 0
+      || (r.lintErrors ?? 0) > 0,
   );
   const clean = summary.checked.filter(
-    (r) => r.gaps === 0 && r.falsePositives === 0 && (r.infrastructureErrors ?? 0) === 0,
+    (r) => r.gaps === 0
+      && r.falsePositives === 0
+      && (r.infrastructureErrors ?? 0) === 0
+      && (r.lintErrors ?? 0) === 0,
   );
 
   lines.push(`Checked ${summary.checked.length} skill(s) with committed scenarios against the live model.`);
@@ -49,6 +59,9 @@ export function renderDriftSummary(summary: DriftSummary): string {
         parts.push(
           `${r.infrastructureErrors} infrastructure error${r.infrastructureErrors === 1 ? '' : 's'}`,
         );
+      }
+      if ((r.lintErrors ?? 0) > 0) {
+        parts.push(`${r.lintErrors} lint error${r.lintErrors === 1 ? '' : 's'}`);
       }
       lines.push(`  - ${r.skillName} (${r.filePath}): ${parts.join(', ')}`);
     }

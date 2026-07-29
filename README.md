@@ -260,7 +260,7 @@ npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 328 tests across the CLI, Action, adapters, lint engine, evals,
+The test suite currently contains 333 tests across the CLI, Action, adapters, lint engine, evals,
 drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
 browser bundle, audit production dependencies, verify the published package contents, and check the
 committed Action bundle.

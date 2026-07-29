@@ -12,6 +12,8 @@ All notable changes to Tripwire are documented here.
 - Restricted Claude and Gemini probes to plan mode and Codex probes to a read-only sandbox.
 - Made `tripwire.yaml` agent selection effective across behavioral commands.
 - Added schema validation for committed scenario files.
+- Made CLI behavioral gates fail on static lint errors.
+- Made scenario-only pull requests trigger the sibling skill in the GitHub Action.
 
 ### Product experience
 
@@ -24,7 +26,7 @@ All notable changes to Tripwire are documented here.
 ### Verification
 
 - Added CI across Node.js 20 and 22.
-- Expanded the suite to 328 tests.
+- Expanded the suite to 333 tests.
 - Added committed Action-bundle verification and npm package-content checks.
 
 ## 0.1.1

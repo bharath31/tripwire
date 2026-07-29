@@ -394,6 +394,8 @@ program
     const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
     const lintResult = lint(skill, ruleConfig, customRules);
     const report = buildCoverageReport(skillName, lintResult, results);
+    console.log(formatLintResult(skill.frontmatter.name ?? filePath, lintResult));
+    console.log('');
     console.log(renderCoverageReport(report));
     if (inlineScenario) {
       console.log('');
@@ -403,7 +405,7 @@ program
       ));
     }
 
-    const exitCode = coverageExitCode(report);
+    const exitCode = lintExitCode(lintResult) === 1 || coverageExitCode(report) === 1 ? 1 : 0;
     await trackBehavioralRun(
       'test',
       agent,
@@ -461,6 +463,7 @@ program
         gaps: report.gaps.length,
         falsePositives: report.falsePositives.length,
         infrastructureErrors: report.infrastructureErrors.length,
+        lintErrors: report.lintResult.errors.length,
       });
     }
 
