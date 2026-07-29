@@ -1,321 +1,263 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/bharath31/tripwire/main/assets/banner.gif" alt="Tripwire — the quality gate for Agent Skills" width="100%" />
+<img src="https://raw.githubusercontent.com/bharath31/tripwire/main/assets/banner.gif" alt="Tripwire behavioral tests for Agent Skills" width="100%" />
 
-<br />
+# Behavioral regression tests for Agent Skills
 
-**Does your skill trip on the right prompts?**
+Catch skills that miss the right prompts or activate on the wrong ones. Run the tests locally, commit
+the expected behavior, and gate every skill change in CI.
 
-Lint, real activation-coverage probing, and CI checks for the `SKILL.md` files that power Agent Skills.
+[![CI](https://github.com/bharath31/tripwire/actions/workflows/ci.yml/badge.svg)](https://github.com/bharath31/tripwire/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/tripwire-skills)](https://www.npmjs.com/package/tripwire-skills)
+[![tests](https://img.shields.io/badge/tests-311%20passing-61d990)](#development)
+[![license](https://img.shields.io/badge/license-MIT-a2a3ad)](./LICENSE)
 
-<p>
-  <a href="https://tripwire.bharath.sh"><img src="https://tripwire.bharath.sh/api/badge?repo=bharath31/tripwire&amp;path=skills/tripwire/SKILL.md&amp;branch=main" alt="tripwire coverage" /></a>
-  <a href="https://tripwire.bharath.sh"><img src="https://img.shields.io/badge/playground-tripwire.bharath.sh-ff4d4d" alt="Playground" /></a>
-  <img src="https://img.shields.io/badge/tests-288%20passing-4ade80" alt="Tests" />
-  <img src="https://img.shields.io/badge/Agent%20Skills-SKILL.md-8b8d9a" alt="Agent Skills" />
-</p>
-
-<p>
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#the-github-action">GitHub Action</a> ·
-  <a href="#command-reference">Commands</a> ·
-  <a href="#going-deeper">Going deeper</a> ·
-  <a href="./ROADMAP.md">Roadmap</a> ·
-  <a href="https://tripwire.bharath.sh">Try it in your browser ↗</a>
-</p>
+[Quick start](#quick-start) · [GitHub Action](#github-action) · [How it works](#how-it-works) ·
+[Commands](#command-reference) · [Security](#security-model) ·
+[Browser lint](https://tripwire.bharath.sh)
 
 </div>
 
----
+## Why Tripwire exists
 
-## The idea
+An agent decides whether to load a skill from its name and description. That makes the description
+routing code, not ordinary documentation.
 
-A skill's `description` is the only signal the agent uses to decide whether to invoke it. It isn't
-documentation — it's routing logic, and it fails **silently in both directions**: too narrow and the
-skill never fires on its own use cases; too broad and it hijacks unrelated prompts. You can't lint
-your way to knowing which happens — that's a behavioral property, so you have to *run* the skill.
+Two costly failures are silent:
 
-Tripwire does exactly that. It lints your `SKILL.md` against best-practice rules, then probes
-**activation coverage** by generating a prompt matrix and running real agent sessions to see what
-actually fires — surfacing description bugs, coverage gaps, and false positives before they ship.
+- A user asks for the intended outcome, but the skill never activates.
+- An unrelated prompt activates the skill and injects the wrong instructions.
 
-> **When you don't need this:** if a skill is purely personal — you're the only one who'll ever load
-> it — you'll notice a misfire the next time you use it. Tripwire earns its keep once a skill ships
-> to *other people's* agents, where a silent gap is invisible until someone reports "it just didn't
-> do the thing."
+A schema linter cannot observe either failure. Tripwire runs real agent sessions, records the
+activation event, and compares the result with an explicit behavioral contract.
+
+Tripwire is useful when other people depend on your skill: a public skill, a shared company library,
+or a repository where skill changes require review. A personal, low-stakes skill usually does not
+need a behavioral test suite.
 
 ## Quick start
+
+Tripwire requires Node.js 20 or newer.
 
 ```bash
 npm install -g tripwire-skills
 ```
 
+Start with the free static check:
+
 ```bash
-# Zero-config entry — scaffolds .github/workflows/tripwire.yml and lints your skill
-tripwire init ./skills/brainstorming/
-
-# Static best-practice lint (instant, offline, free)
-tripwire lint ./skills/brainstorming/SKILL.md
-
-# Probe which prompts actually activate it, then commit the scenarios it writes
-tripwire analyze ./skills/brainstorming/
-
-# In CI: rerun those exact scenarios deterministically, no re-probing
-tripwire test ./skills/brainstorming/
+tripwire lint ./skills/code-review
 ```
 
-Prefer not to install anything? The lint engine runs live in your browser at
-**[tripwire.bharath.sh](https://tripwire.bharath.sh)** — paste a `SKILL.md` and see it graded instantly.
+Generate and run an activation matrix:
 
-## The GitHub Action
+```bash
+export ANTHROPIC_API_KEY=...
+tripwire analyze ./skills/code-review
+```
 
-Gate skill changes in CI the same way you gate lint and tests. Add one workflow file:
+`analyze` writes `tripwire-scenarios.yaml` beside the skill. Review it like a test file:
+
+```yaml
+skillName: code-review
+scenarios:
+  - prompt: review this pull request for security problems
+    zone: core
+    expectedActivation: true
+
+  - prompt: write release notes for this pull request
+    zone: negative
+    expectedActivation: false
+```
+
+Commit that file, then replay the same contract:
+
+```bash
+tripwire test ./skills/code-review
+```
+
+A missed activation, false trigger, agent timeout, or authentication failure returns a non-zero exit
+code. Infrastructure failures are reported separately from behavioral regressions.
+
+## The production workflow
+
+1. Run `tripwire lint` while authoring a skill.
+2. Run `tripwire analyze` to discover core, edge, negative, and paraphrased cases.
+3. Review and commit `tripwire-scenarios.yaml`.
+4. Run `tripwire test` in CI whenever the skill or its scenarios change.
+
+This turns "the description looks right" into a reviewable contract with an executable gate.
+
+## GitHub Action
+
+The Action always lints changed skills. Set `probe: true` to replay committed activation scenarios:
 
 ```yaml
 # .github/workflows/tripwire.yml
 name: Tripwire
 on: pull_request
+
 jobs:
   skills:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write   # for the summary comment
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0       # needed to diff the PR
+          fetch-depth: 0
       - uses: bharath31/tripwire@v1
         with:
-          probe: true                                       # also run coverage checks
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}  # your key, your runner
+          probe: true
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-On every PR it **lints changed skills** (always), **probes activation coverage** (when a key and
-committed scenarios are present), annotates the exact lines on the diff, and posts a sticky summary
-comment. The probe runs in **your** CI using **your** API key — it never leaves your runner. Without a
-key (e.g. fork PRs), the probe skips with a notice and lint still gates the PR.
+The Action annotates the diff, posts or updates one PR summary, and returns a failing check for lint
+errors or probe failures. On forked pull requests without a key, it reports that the paid probe was
+skipped and still runs static lint.
 
-<details>
-<summary><strong>Action inputs</strong></summary>
-
-| Input | Default | Description |
+| Input | Default | Purpose |
 |---|---|---|
-| `paths` | `**/SKILL.md` | Comma/newline-separated globs for skill files |
-| `probe` | `false` | Run the activation coverage probe (needs a key) |
-| `fail-on-warning` | `false` | Treat lint warnings as check failures |
-| `comment` | `true` | Post/update a sticky PR summary comment |
-| `claude-version` | `latest` | `@anthropic-ai/claude-code` version for the probe |
-| `working-directory` | `.` | Root to resolve skills and run the probe from |
-| `anthropic-api-key` | — | API key for the probe; falls back to `ANTHROPIC_API_KEY` in the env |
+| `paths` | `**/SKILL.md` | Comma or newline-separated skill globs |
+| `probe` | `false` | Replay committed activation scenarios |
+| `fail-on-warning` | `false` | Treat lint warnings as failures |
+| `comment` | `true` | Post or update the PR summary |
+| `claude-version` | `latest` | Claude Code version installed for the probe |
+| `working-directory` | `.` | Repository root used to resolve skills |
+| `anthropic-api-key` | unset | Probe credential; falls back to the environment |
 
-</details>
+## How it works
+
+For each scenario, Tripwire:
+
+1. Copies only the skill under test into a disposable agent workspace.
+2. Runs the selected agent with a read-only or plan-mode permission boundary.
+3. Reads the structured transcript for the skill activation signal.
+4. Compares observed activation with `expectedActivation`.
+5. Deletes the temporary workspace.
+
+The Claude adapter watches the structured `Skill` tool-use event. This is stronger than asking
+another model whether a description "looks likely" to activate.
+
+Agent support is intentionally explicit:
+
+| Agent | Activation signal | Status |
+|---|---|---|
+| Claude Code | Structured `Skill` tool-use event | Live-verified |
+| Gemini CLI | Structured `activate_skill` tool-use event | Experimental; source-verified |
+| Codex CLI | Read of the matching `skills/<name>/SKILL.md` path | Experimental; heuristic |
+
+Use `--agent claude`, `--agent gemini`, or `--agent codex`. The default can also be set in
+`tripwire.yaml`:
+
+```yaml
+agent: claude
+model: claude-sonnet-4-6
+judge_model: claude-haiku-4-5-20251001
+probe_count:
+  core: 8
+  adjacent: 8
+  negative: 8
+  variants: 5
+```
+
+`analyze` currently uses Anthropic to generate the prompt matrix and judge activated sessions, even
+when a different runtime adapter is selected. The selected agent CLI must also be installed and
+authenticated. `test` replays committed prompts and does not regenerate them.
+
+## Security model
+
+- Probe sessions run in a disposable workspace containing only the `SKILL.md` under test.
+- Claude and Gemini run in plan mode. Codex runs with a read-only sandbox.
+- Tripwire does not host your repository or proxy agent sessions through a Tripwire backend.
+- `analyze` sends the skill content to Anthropic to generate probe prompts and judge sessions.
+- The GitHub Action uses credentials from your runner and does not print the API key.
+- Adapter failures are not converted into false behavioral results.
+
+Tripwire sends one anonymous event after a behavioral run so project DAU and reliability can be
+measured. It contains the command, adapter, outcome, source, version, and a random hashed install or
+repository ID. It never contains prompts, skill names, paths, repository names, outputs, usernames,
+or credentials. Disable it with `TRIPWIRE_TELEMETRY=0`, `TRIPWIRE_TELEMETRY_DISABLED=1`, or
+`DO_NOT_TRACK=1`. The full event contract is in [docs/analytics.md](./docs/analytics.md).
+
+Please report vulnerabilities privately using the process in [SECURITY.md](./SECURITY.md).
 
 ## Command reference
 
-| Command | What it does | Cost |
+| Command | What it does | Provider usage |
 |---|---|---|
-| `tripwire init [skill]` | Scaffold the Action workflow (and lint + guide you to `analyze`) | Free, instant |
-| `tripwire lint <skill>` | Static rules check on a skill file (`--fix` for safe auto-fixes) | Free, instant |
-| `tripwire analyze <skill>` | Prompt matrix → real agent sessions → coverage map | ~$0.10–0.50/run |
-| `tripwire test <skill>` | Rerun committed scenarios (CI mode) | Cheaper than `analyze` |
-| `tripwire conflicts <dir>` | Scan a skills directory for name collisions & description overlap | Free, instant |
-| `tripwire test-all <dir>` | Rerun committed scenarios for every skill — the drift check | Like `test`, per skill |
-| `tripwire eval <skill>` | Outcome-quality evals: assertions + an optional rubric judge | Free + rubric cases per case |
+| `tripwire lint [path]` | Lint one skill or every skill under a directory | None |
+| `tripwire lint [path] --fix` | Apply mechanically safe fixes | None |
+| `tripwire analyze <skill>` | Generate prompts and run a real activation matrix | Yes |
+| `tripwire test <skill>` | Replay a committed scenario file | Yes |
+| `tripwire test-all <dir>` | Replay scenarios for a whole skill library | Yes |
+| `tripwire conflicts <dir>` | Find duplicate names and description overlap | None |
+| `tripwire eval <skill>` | Check post-activation assertions and optional rubrics | Depends on cases |
+| `tripwire init [skill]` | Scaffold the pull-request workflow | None |
+| `tripwire init --drift` | Add a scheduled model-drift workflow | None |
 
-`analyze` is a deliberate local step (it calls real models). It writes a `tripwire-scenarios.yaml` you
-commit alongside the skill; the Action and `tripwire test` then rerun those exact scenarios
-deterministically.
+Run `tripwire <command> --help` for all options.
 
-## Going deeper
+## What static lint checks
 
-<details>
-<summary><strong>Cross-agent probing</strong> — does your skill fire in every agent you ship to?</summary>
-
-<br />
-
-`analyze` and `test` accept `--agent <claude|gemini|codex>` (default `claude`) to probe activation
-against a different agent CLI on the same `SKILL.md`. Confidence differs by agent:
-
-| Agent | Detection | Confidence |
-|---|---|---|
-| `claude` (Claude Code) | dedicated `Skill` tool-use event in `stream-json` | verified against a live install |
-| `gemini` (Gemini CLI) | dedicated `activate_skill` tool-use event | high — confirmed from source, not yet live-verified |
-| `codex` (Codex CLI) | heuristic: a file-read command matching a `skills/<name>/SKILL.md` path (Codex has no dedicated skill event) | lower confidence, not yet live-verified |
-
-```bash
-tripwire analyze ./skills/brainstorming/ --agent=gemini
-```
-
-</details>
-
-<details>
-<summary><strong>Skill-set conflicts</strong> — skills that quietly fight each other</summary>
-
-<br />
-
-Two skills can each lint clean and still collide at runtime. `tripwire conflicts` scans a whole
-directory and reports **name collisions** (two files sharing a `name` — a hard error) and
-**description overlap** (two skills sharing enough trigger vocabulary that a prompt could plausibly
-fire either — an advisory warning).
-
-```bash
-tripwire conflicts ./skills/
-#   → --threshold 0.0-1.0 tunes how much shared vocabulary counts as overlap (default 0.3)
-```
-
-Static and free — no API key. A behavioral probe (does an ambiguous prompt pick the *wrong* skill)
-is a natural next step on top of this.
-
-</details>
-
-<details>
-<summary><strong>Model drift</strong> — scenarios that pass today can regress silently</summary>
-
-<br />
-
-A `tripwire-scenarios.yaml` committed in March isn't guaranteed to still pass in June — model updates
-can shift which prompts activate a skill with no code change to explain it. `tripwire test-all` reruns
-every skill's committed scenarios in one pass and reports any that now disagree with their baseline:
-
-```bash
-tripwire test-all ./skills/
-```
-
-`tripwire init --drift` scaffolds a scheduled workflow (`.github/workflows/tripwire-drift.yml`, weekly)
-that runs this on a timer, writes the report to `$GITHUB_STEP_SUMMARY`, and fails the run when a skill
-has drifted — the same signal GitHub already uses to notify you of scheduled-workflow failures.
-
-</details>
-
-<details>
-<summary><strong>Outcome evals</strong> — did it <em>work</em>, not just did it fire</summary>
-
-<br />
-
-Everything above answers "did the skill activate." `tripwire eval` answers "once activated, did it do
-the right thing," with author-written cases in `tripwire-evals.yaml`:
+The built-in rules cover frontmatter shape, kebab-case names, trigger-focused descriptions, maximum
+description length, placeholder text, body length, and the presence of an example. Rules can be
+changed or extended with `tripwire.yaml`:
 
 ```yaml
-skillName: brainstorming
-cases:
-  - name: asks a clarifying question before proposing a solution
-    prompt: help me build a new dashboard feature
-    assertions:
-      - type: contains
-        value: "?"
-      - type: not_contains
-        value: "```"
-    rubric: The response should ask about scope or requirements before writing any code.
-```
-
-Each case runs two independent checks: **assertions** (`contains` / `not_contains` — free,
-deterministic, no key) and an optional **`rubric`** (a natural-language bar, graded by an LLM judge,
-priced like `analyze`). A rubric case is *skipped with a clear notice* — never silently ignored — when
-no `ANTHROPIC_API_KEY` is set; assertion-only cases still run.
-
-```bash
-tripwire eval ./skills/brainstorming/
-```
-
-This is the newest, least-established surface here — assertions are solid, but a rubric is only as
-good as the rubric you write.
-
-</details>
-
-<details>
-<summary><strong>Custom rules &amp; org config</strong> — turn rules off, change severity, add your own</summary>
-
-<br />
-
-For a team standardizing skills across an org, drop this in the same `tripwire.yaml` the probe config
-uses (resolved per-skill-directory):
-
-```yaml
-extends: tripwire:recommended   # the only preset today — every built-in rule at its default level
+extends: tripwire:recommended
 rules:
-  no-code-example: off          # off | warning | error — explicit rules always win over a preset
+  no-code-example: off
   description-use-when: warning
 plugins:
-  - ./org-rules.mjs             # plain JS, resolved relative to this tripwire.yaml
+  - ./org-rules.mjs
 ```
 
-A plugin exports plain objects — no dependency on tripwire's own types:
+Static lint is also available at [tripwire.bharath.sh](https://tripwire.bharath.sh). It runs in the
+browser and is useful for a quick authoring check. Behavioral activation testing requires the CLI
+because it needs a real agent session.
 
-```js
-// org-rules.mjs
-export const rules = [
-  {
-    id: 'org-requires-owner',
-    defaultLevel: 'error',
-    check: (skill) => (skill.frontmatter.owner ? null : 'org policy: every skill needs an `owner` field'),
-  },
-];
-```
+## Additional checks
 
-A malformed custom rule is skipped with a warning rather than crashing the run. This applies
-everywhere `lint()` runs: `tripwire lint`, `analyze`, `test`, `test-all`, and the Action.
-
-</details>
-
-## What it checks
-
-**Lint (static, free):** `name` present and kebab-case · `description` present, starts with
-`"Use when"`, ≤ 1024 chars, and doesn't summarize a workflow · body isn't a stub (no placeholder text,
-has an example, meets a length floor).
-
-**Coverage probe (real sessions):** generates prompts across four zones and checks what actually fires —
-
-| Zone | Should activate? | Catches |
-|---|---|---|
-| Core triggers | ✅ yes | the skill missing its own use case |
-| Adjacent / edge | ✅ yes | gaps the author didn't think to test |
-| Negative | ❌ no | false positives (fires when it shouldn't) |
-| Keyword variants | ✅ yes | description keyword blind spots |
-
-A scenario whose real behavior disagrees with its expectation is a **regression** — a gap (didn't fire
-when it should) or a false positive (fired when it shouldn't).
-
-## Coverage badge
-
-A live badge — no stored state; it fetches your `SKILL.md` from GitHub and lints it fresh on every
-request (cached ~5 min at the edge):
+- `tripwire conflicts` flags duplicate skill names and likely description overlap.
+- `tripwire test-all` reruns every committed contract to expose model drift.
+- `tripwire eval` asserts response content after a skill activates.
+- The coverage badge lints a public GitHub-hosted skill at request time:
 
 ```md
 ![tripwire](https://tripwire.bharath.sh/api/badge?repo=owner/repo&path=path/to/SKILL.md&branch=main)
 ```
 
-`repo` is required (`owner/repo`); `path` defaults to `SKILL.md` at the repo root; `branch` defaults to
-`main`. An unrecognized repo renders a grey "unknown" badge rather than failing — a badge should never
-break your README's render. (The one at the top of this file points tripwire at its own skill.)
+These are secondary to the core workflow: define expected activation, run it against a real agent,
+and fail the change when behavior diverges.
 
-## Also ships as
+## Current maturity
 
-- **A skill** — copy [`skills/tripwire/SKILL.md`](./skills/tripwire/SKILL.md) into your own
-  `.claude/skills/` and the agent lints every `SKILL.md` you write *as you author it*, recommending
-  the CLI and the Action at the right moments (never spending API money without asking).
-- **A VS Code extension** (early scaffold) — [`vscode-extension/`](./vscode-extension) wires the same
-  lint engine to inline squiggles. It builds, type-checks, and packages into a real `.vsix`, but isn't
-  published to the Marketplace yet.
-
-## How it works
-
-Activation isn't visible in `claude -p` text output — Tripwire runs
-`claude -p "<prompt>" --output-format stream-json --verbose` and detects the `Skill` tool-use event for
-the skill under test. In CI, each changed skill is staged at `.claude/skills/<name>/SKILL.md` so the
-agent can load and activate it.
+Tripwire is pre-1.0. The static linter and Claude activation path have automated coverage and live
+verification. Gemini and Codex activation checks remain experimental until their live canary suites
+are published. Pin Tripwire and your agent CLI version in production workflows so upgrades are
+intentional.
 
 ## Development
 
 ```bash
 npm install
-npm test              # run the suite (288 tests)
-npm run build         # build the CLI (dist/cli.js)
-npm run build:action  # bundle the GitHub Action (action-dist/index.js)
-npm run build:web     # bundle the browser playground
+npm run typecheck
+npm test
+npm run build
+npm run build:action
+npm run build:web
 ```
 
-The landing page (`web/`) and its Cloudflare Pages Functions (`functions/`) auto-deploy to
-[tripwire.bharath.sh](https://tripwire.bharath.sh) on push to `main`. The README banner is a Remotion
-composition in [`banner/`](./banner) — `cd banner && npx remotion render Banner out/banner.gif --codec=gif`
-regenerates [`assets/banner.gif`](./assets/banner.gif).
+The test suite currently contains 322 tests across the CLI, Action, adapters, lint engine, evals,
+drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
+browser bundle, audit production dependencies, verify the published package contents, and check the
+committed Action bundle.
+
+The site in `web/` and its Cloudflare Pages Functions in `functions/` deploy to
+[tripwire.bharath.sh](https://tripwire.bharath.sh) from `main`.
+
+## License
+
+[MIT](./LICENSE)

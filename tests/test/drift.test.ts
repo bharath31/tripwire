@@ -26,6 +26,21 @@ describe('summarizeDrift', () => {
     expect(summary.hasDrift).toBe(true);
   });
 
+  it('fails the drift run on infrastructure errors', () => {
+    const summary = summarizeDrift(
+      [{
+        skillName: 'a',
+        filePath: 'a/SKILL.md',
+        gaps: 0,
+        falsePositives: 0,
+        infrastructureErrors: 1,
+      }],
+      [],
+    );
+    expect(summary.hasDrift).toBe(true);
+    expect(renderDriftSummary(summary)).toContain('1 infrastructure error');
+  });
+
   it('carries through skipped skills unchanged', () => {
     const skipped = [{ filePath: 'b/SKILL.md', reason: 'no scenarios' }];
     const summary = summarizeDrift([], skipped);

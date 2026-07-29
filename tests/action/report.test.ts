@@ -20,6 +20,20 @@ const withRegression: SkillReport = {
   lint: { errors: [], warnings: [] },
   probe: { skillName: 'reg', results: [], regressions: [{ prompt: 'do x', zone: 'core', kind: 'gap' }] },
 };
+const withInfrastructureError: SkillReport = {
+  skillName: 'infra', file: 'skills/infra/SKILL.md',
+  lint: { errors: [], warnings: [] },
+  probe: {
+    skillName: 'infra',
+    results: [],
+    regressions: [{
+      prompt: 'do x',
+      zone: 'core',
+      kind: 'infrastructure',
+      error: 'agent timed out',
+    }],
+  },
+};
 
 describe('renderComment', () => {
   it('includes the sticky marker', () => {
@@ -46,6 +60,13 @@ describe('renderComment', () => {
     const out = renderComment([{ ...clean, probeSkipped: 'no scenarios file' }]);
     expect(out).toContain('no scenarios file');
   });
+
+  it('reports infrastructure errors without calling them activation gaps', () => {
+    const out = renderComment([withInfrastructureError]);
+    expect(out).toContain('infrastructure error');
+    expect(out).toContain('agent timed out');
+    expect(out).not.toContain('gap (did not activate)');
+  });
 });
 
 describe('computeExitCode', () => {
@@ -67,5 +88,9 @@ describe('computeExitCode', () => {
 
   it('returns 1 on a coverage regression', () => {
     expect(computeExitCode([withRegression], false)).toBe(1);
+  });
+
+  it('returns 1 on a probe infrastructure error', () => {
+    expect(computeExitCode([withInfrastructureError], false)).toBe(1);
   });
 });

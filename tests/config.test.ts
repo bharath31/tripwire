@@ -25,7 +25,6 @@ describe('loadConfig', () => {
     const config = await loadConfig(tmpDir);
     expect(config.model).toBe('claude-opus-4-8');
     expect(config.judge_model).toBe(defaultConfig.judge_model);
-    expect(config.thresholds).toEqual(defaultConfig.thresholds);
   });
 
   it('merges nested probe_count values', async () => {

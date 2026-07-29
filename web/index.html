@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tripwire — the quality gate for Agent Skills</title>
-  <meta name="description" content="Everything you need to ship Agent Skills that work: lint, real activation-coverage probing, conflict and model-drift detection, outcome evals, cross-agent checks, and a GitHub Action that gates every PR." />
-  <meta property="og:title" content="Tripwire" />
-  <meta property="og:description" content="The quality gate for Agent Skills: lint, activation coverage, and CI checks on every PR." />
+  <title>Tripwire: behavioral tests for Agent Skills</title>
+  <meta name="description" content="Run real agent sessions against your SKILL.md and block silent activation regressions before users encounter them." />
+  <meta property="og:title" content="Tripwire: behavioral tests for Agent Skills" />
+  <meta property="og:description" content="Catch skills that miss the right prompts or fire on the wrong ones. Test locally, commit the scenarios, and gate every PR." />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="https://tripwire.bharath.sh/api/og" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -18,162 +18,219 @@
   <div class="wire-bg" aria-hidden="true"></div>
 
   <header class="nav">
-    <div class="brand">
+    <a class="brand" href="#top" aria-label="Tripwire home">
       <span class="brand-mark" aria-hidden="true"></span>
       <span class="brand-name">tripwire</span>
-    </div>
-    <nav class="nav-links">
-      <a href="#checks">Checks</a>
-      <a href="#coverage">Coverage</a>
+    </a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <a href="#problem">Why Tripwire</a>
+      <a href="#how">How it works</a>
       <a href="#ci">CI</a>
-      <a href="#more">More</a>
-      <a href="#playground">Playground</a>
-      <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
+      <a href="#playground">Lint playground</a>
+      <a class="nav-github" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
   </header>
 
-  <main>
+  <main id="top">
     <section class="hero">
-      <p class="eyebrow">the quality gate for Agent Skills</p>
-      <h1>Does your skill trip on<br /><span class="accent">the right prompts?</span></h1>
-      <p class="lede">
-        Everything you need to confirm a skill <strong>works</strong> and <strong>follows best
-        practices</strong> — in one tool. Tripwire lints your <code>SKILL.md</code>, probes which
-        prompts actually activate it with real Claude sessions, and gates every PR in CI.
-      </p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="#ci">Add to your CI →</a>
-        <a class="btn btn-ghost" href="#playground">Try it in the browser</a>
+      <div class="hero-copy">
+        <p class="eyebrow">behavioral tests for SKILL.md</p>
+        <h1>Catch silent skill misfires before your users do.</h1>
+        <p class="lede">
+          A skill can look valid and still miss the prompts it was built for. Tripwire runs real
+          agent sessions, records what activates, and fails CI when that behavior changes.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#quickstart">Test your first skill</a>
+          <a class="btn btn-ghost" href="#failed-run">See a failed run</a>
+        </div>
+        <div class="trust-row" aria-label="Product facts">
+          <span>Open source</span>
+          <span>Runs on your machine</span>
+          <span>Claude adapter live-verified</span>
+        </div>
       </div>
-      <div class="install">
-        <code id="install-cmd">npm install -g tripwire-skills</code>
-        <button class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
+
+      <div class="hero-terminal" id="failed-run" aria-label="Example failed Tripwire run">
+        <div class="terminal-bar">
+          <span class="terminal-dots" aria-hidden="true"></span>
+          <span>tripwire test</span>
+        </div>
+        <pre><span class="t-dim">$ tripwire test ./skills/code-review</span>
+
+Running 4 committed scenarios...
+
+<span class="t-ok">✓</span> "review this pull request"        activated
+<span class="t-bad">✗</span> "audit this auth middleware"     <span class="t-bad">missed</span>
+<span class="t-ok">✓</span> "write release notes"             stayed quiet
+<span class="t-ok">✓</span> "fix this CSS bug"                stayed quiet
+
+<span class="t-bad">1 activation regression. CI failed.</span></pre>
       </div>
     </section>
 
-    <!-- Three pillars -->
-    <section class="how" id="checks">
-      <div class="card">
-        <div class="card-cmd">tripwire lint</div>
-        <h3>Best-practice lint</h3>
-        <p>Instant, offline checks: <code>description</code> starts with “Use when”, stays under 1024 chars, and avoids workflow summaries; <code>name</code> is kebab-case; the body has real examples and isn’t a stub.</p>
-      </div>
-      <div class="card card-accent">
-        <div class="card-cmd">tripwire analyze</div>
-        <h3>Real activation coverage</h3>
-        <p>Generates a prompt matrix across four zones and runs <strong>real Claude sessions</strong> to map what fires, what silently misses, and what false-triggers — the check a linter can’t do.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">tripwire test</div>
-        <h3>CI-ready regression gate</h3>
-        <p>Commit the generated scenarios and rerun them deterministically — in CI or locally — to catch activation regressions before they ship.</p>
-      </div>
-    </section>
-
-    <!-- Coverage deep-dive -->
-    <section class="feature" id="coverage">
-      <div class="feature-head">
-        <p class="eyebrow">the part a linter can’t catch</p>
-        <h2>Activation coverage, measured against real runs</h2>
-        <p class="feature-sub">
-          A skill’s <code>description</code> decides whether Claude invokes it. Tripwire generates
-          prompts across four zones, runs them through real sessions, and reports exactly where your
-          skill over- or under-fires.
+    <section class="problem section" id="problem">
+      <div class="section-heading">
+        <p class="eyebrow">the failure your linter cannot see</p>
+        <h2>Your skill description is routing code.</h2>
+        <p>
+          The agent reads a skill’s name and description before deciding whether to load it. A clean
+          file proves the syntax works. It does not prove the agent will choose the skill.
         </p>
       </div>
-      <div class="zones">
-        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Core triggers</b><span>the skill’s own stated use cases</span></div>
-        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Adjacent / edge</b><span>related intents you didn’t think to test</span></div>
-        <div class="zone"><span class="zone-no">should stay quiet ✗</span><b>Negative</b><span>off-topic prompts — catches false positives</span></div>
-        <div class="zone"><span class="zone-yes">should fire ✓</span><b>Keyword variants</b><span>paraphrases — exposes description blind spots</span></div>
+      <div class="failure-grid">
+        <article class="failure-card">
+          <span class="failure-label">silent miss</span>
+          <h3>The user asks for the right outcome.</h3>
+          <p>The wording differs from your description, so the agent never loads the skill. Nothing crashes. The user gets a generic answer.</p>
+        </article>
+        <article class="failure-card">
+          <span class="failure-label">false trigger</span>
+          <h3>The skill claims too much territory.</h3>
+          <p>An unrelated prompt matches the description. The agent loads the wrong instructions and interferes with work it should have ignored.</p>
+        </article>
       </div>
-      <pre class="report"><span class="r-dim">Coverage Report: brainstorming</span>
-Core triggers      7/8 activated   (88%) <span class="r-ok">✓</span>
-Adjacent/edge      3/8 activated   (38%) <span class="r-warn">⚠</span>
-Negatives          1/8 activated   (13%) <span class="r-ok">✓</span>
-Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
-
-<span class="r-dim">─ GAPS ───────────────────────────</span>
-<span class="r-bad">✗</span> "what's the best way to approach X?"   [adjacent — miss]
-<span class="r-bad">✗</span> "brainstorm ideas for Y"               [variant — miss]
-<span class="r-dim">─ SUGGESTIONS ─────────────────────</span>
-1. Add "brainstorm", "think through" to the description
-2. Cover "approach" questions — add "planning how to approach"</pre>
     </section>
 
-    <!-- CI / Action -->
-    <section class="feature alt" id="ci">
-      <div class="feature-head">
-        <p class="eyebrow">runs on every pull request</p>
-        <h2>The same checks, as a GitHub Action</h2>
-        <p class="feature-sub">
-          Gate skill changes the way you gate lint and tests. Add one workflow file — it lints changed
-          skills, runs the coverage probe with <strong>your own API key in your own runner</strong>,
-          annotates the diff, and posts a sticky summary. The key never leaves your CI.
-        </p>
+    <section class="how section" id="how">
+      <div class="section-heading">
+        <p class="eyebrow">from guesswork to a testable contract</p>
+        <h2>Test the behavior. Commit the evidence.</h2>
       </div>
-      <pre class="snippet"><span class="s-c"># .github/workflows/tripwire.yml</span>
-<span class="s-k">name</span>: Tripwire
-<span class="s-k">on</span>: pull_request
-<span class="s-k">jobs</span>:
+      <ol class="steps">
+        <li>
+          <span class="step-number">01</span>
+          <div>
+            <code>tripwire analyze</code>
+            <h3>Probe the skill with real prompts</h3>
+            <p>Tripwire generates core, edge, negative, and paraphrased prompts, then runs the selected agent in an isolated read-only workspace.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-number">02</span>
+          <div>
+            <code>tripwire-scenarios.yaml</code>
+            <h3>Review the expected behavior</h3>
+            <p>Each prompt carries an explicit should-activate or should-stay-quiet expectation. Edit the contract, then commit it beside the skill.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-number">03</span>
+          <div>
+            <code>tripwire test</code>
+            <h3>Block the regression in CI</h3>
+            <p>Replay the same scenario set on every skill change. Tripwire separates behavioral failures from agent timeouts and authentication errors.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="evidence section">
+      <div class="evidence-copy">
+        <p class="eyebrow">a real activation signal</p>
+        <h2>Tripwire watches the agent load your skill.</h2>
+        <p>
+          It does not ask an LLM whether your description “looks good.” The Claude adapter reads the
+          structured <code>Skill</code> tool event from a real session and matches the skill that fired.
+        </p>
+        <p class="evidence-note">Gemini and Codex adapters are available as experimental checks. Their confidence level is reported instead of hidden.</p>
+      </div>
+      <pre class="event"><span class="t-dim">{</span>
+  "type": "tool_use",
+  "name": <span class="t-accent">"Skill"</span>,
+  "input": {
+    "skill": <span class="t-accent">"code-review"</span>
+  }
+<span class="t-dim">}</span>
+
+<span class="t-ok">observed: activated</span>
+<span class="t-ok">expected: activated</span>
+<strong>verdict: pass</strong></pre>
+    </section>
+
+    <section class="quickstart section" id="quickstart">
+      <div class="section-heading">
+        <p class="eyebrow">first useful result in three commands</p>
+        <h2>Test one skill locally.</h2>
+        <p>Static lint is free. Behavioral analysis uses your installed agent and your model credentials.</p>
+      </div>
+      <div class="command-stack">
+        <div class="command">
+          <code><span>$</span> npm install -g tripwire-skills</code>
+          <button class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
+        </div>
+        <div class="command">
+          <code><span>$</span> tripwire lint ./skills/my-skill</code>
+          <button class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
+        </div>
+        <div class="command command-accent">
+          <code><span>$</span> tripwire analyze ./skills/my-skill</code>
+          <button class="copy-btn" data-copy="tripwire analyze ./skills/my-skill" aria-label="Copy analyze command">Copy</button>
+        </div>
+      </div>
+      <p class="quickstart-note">Tripwire has no hosted repository backend. <code>analyze</code> sends the skill to Anthropic to generate probes, then runs them through your selected local agent CLI.</p>
+    </section>
+
+    <section class="ci section" id="ci">
+      <div class="ci-copy">
+        <p class="eyebrow">a review signal your team can enforce</p>
+        <h2>Gate skill changes on every pull request.</h2>
+        <p>
+          The Action lints changed skills, replays committed activation scenarios, annotates the diff,
+          and posts one sticky PR summary. Missing credentials skip the paid probe and leave static lint running.
+        </p>
+        <ul class="check-list">
+          <li>Runs on your GitHub runner</li>
+          <li>Uses your model credentials</li>
+          <li>Distinguishes misfires from broken infrastructure</li>
+        </ul>
+      </div>
+      <pre class="snippet"><span class="t-dim"># .github/workflows/tripwire.yml</span>
+<span class="t-accent">name</span>: Tripwire
+<span class="t-accent">on</span>: pull_request
+<span class="t-accent">jobs</span>:
   skills:
-    <span class="s-k">runs-on</span>: ubuntu-latest
-    <span class="s-k">permissions</span>: { contents: read, pull-requests: write }
-    <span class="s-k">steps</span>:
-      - <span class="s-k">uses</span>: actions/checkout@v4
-        <span class="s-k">with</span>: { fetch-depth: 0 }
-      - <span class="s-k">uses</span>: bharath31/tripwire@v1
-        <span class="s-k">with</span>:
+    <span class="t-accent">runs-on</span>: ubuntu-latest
+    <span class="t-accent">steps</span>:
+      - <span class="t-accent">uses</span>: actions/checkout@v4
+        <span class="t-accent">with</span>: { fetch-depth: 0 }
+      - <span class="t-accent">uses</span>: bharath31/tripwire@v1
+        <span class="t-accent">with</span>:
           probe: true
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}</pre>
-      <p class="ci-note">No key on a fork PR? The probe skips with a notice — lint still runs and gates the PR.</p>
     </section>
 
-    <!-- More in the box -->
-    <section id="more">
-      <div class="feature-head">
-        <p class="eyebrow">as your skills grow</p>
-        <h2>More than lint, and more than one skill at a time</h2>
+    <section class="fit section">
+      <div class="fit-card fit-yes">
+        <p class="eyebrow">use tripwire when</p>
+        <h2>Other people depend on your skill.</h2>
+        <p>You publish a skill, maintain a shared library, review skill contributions, or need to know whether an agent update changed routing behavior.</p>
       </div>
-      <div class="how">
-      <div class="card">
-        <div class="card-cmd">tripwire conflicts</div>
-        <h3>Skill-set conflict detection</h3>
-        <p>Two skills that each lint clean can still fight at runtime. Scan a whole directory for <strong>name collisions</strong> and <strong>description overlap</strong> — skills shadowing each other.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">tripwire eval</div>
-        <h3>Outcome evals</h3>
-        <p>Did the skill actually <em>do</em> the right thing, not just fire? Author <code>assertions</code> plus an optional LLM-judge <code>rubric</code> per case.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">tripwire test-all · --drift</div>
-        <h3>Model-drift detection</h3>
-        <p>A scenarios file that passed in March can silently regress in June. Re-probe on a schedule and fail loudly when a skill’s activation behavior drifts.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">--agent gemini · codex</div>
-        <h3>Cross-agent probing</h3>
-        <p>Skills now run across 30+ agents on one <code>SKILL.md</code>. Check that yours fires in each agent you ship to — not just Claude Code.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">tripwire.yaml</div>
-        <h3>Pluggable rules</h3>
-        <p><code>extends: tripwire:recommended</code>, ESLint-style. Turn rules off, change severity, or add org-specific checks as plain JS — applied everywhere, including the Action.</p>
-      </div>
-      <div class="card">
-        <div class="card-cmd">badges · --fix</div>
-        <h3>Badges &amp; auto-fix</h3>
-        <p>A live README coverage badge, plus one-command fixes for the mechanically-safe lint issues. Tripwire also ships <strong>as a skill</strong> and as an early <strong>VS Code extension</strong>.</p>
-      </div>
+      <div class="fit-card">
+        <p class="eyebrow">you can skip it when</p>
+        <h2>The skill is personal and low-stakes.</h2>
+        <p>If you are the only user, normal use will expose most activation problems. Tripwire earns its place when a silent failure reaches someone else.</p>
       </div>
     </section>
 
-    <!-- Playground -->
-    <section class="playground" id="playground">
+    <section class="more section">
+      <div class="section-heading compact">
+        <p class="eyebrow">after activation works</p>
+        <h2>Cover the rest of the skill lifecycle.</h2>
+      </div>
+      <div class="more-grid">
+        <div><code>conflicts</code><span>Find skills competing for the same intent.</span></div>
+        <div><code>test-all</code><span>Recheck a whole skill library for model drift.</span></div>
+        <div><code>eval</code><span>Assert what the skill does after it activates.</span></div>
+        <div><code>--agent</code><span>Run experimental Gemini and Codex checks.</span></div>
+      </div>
+    </section>
+
+    <section class="playground section" id="playground">
       <div class="playground-head">
-        <h2>Try the lint check, right here</h2>
-        <p>The real lint engine, bundled to your browser — an instant taste. The full activation-coverage probe runs from the CLI and the Action (it needs real Claude sessions). Nothing leaves this page.</p>
+        <p class="eyebrow">free static check</p>
+        <h2>Lint a SKILL.md in your browser.</h2>
+        <p>This checks file structure and authoring rules. The differentiated activation test runs from the CLI because it needs a real agent session.</p>
       </div>
 
       <div class="examples">
@@ -188,7 +245,7 @@ Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
           <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
         </div>
         <div class="pg-pane">
-          <div class="pane-label">Result</div>
+          <div class="pane-label">Lint result</div>
           <div id="pg-output" class="pg-output"></div>
         </div>
       </div>
@@ -199,14 +256,26 @@ Keyword variants   4/5 activated   (80%) <span class="r-ok">✓</span>
         <span id="pg-share-status" class="share-status" aria-live="polite"></span>
       </div>
     </section>
+
+    <section class="final-cta section">
+      <p class="eyebrow">ship the behavior you intended</p>
+      <h2>Give your next skill change a real activation test.</h2>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#quickstart">Test your first skill</a>
+        <a class="btn btn-ghost" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">Read the source</a>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
-    <span>Tripwire — the quality gate for Agent Skills.</span>
-    <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
+    <span>Tripwire is an open-source project by Bharath.</span>
+    <div>
+      <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
+      <a href="#top">Back to top</a>
+    </div>
   </footer>
 
   <script type="module" src="./main.js"></script>
-  <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b1e4105c05f049539b9e4de8770647d1"}'></script><!-- End Cloudflare Web Analytics -->
+  <!-- Cloudflare Web Analytics --><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "b1e4105c05f049539b9e4de8770647d1"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>

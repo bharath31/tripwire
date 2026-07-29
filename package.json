@@ -1,9 +1,12 @@
 {
   "name": "tripwire-skills",
   "version": "0.1.2",
-  "description": "Lint and activation-test Agent Skills (SKILL.md) — does your skill fire on the right prompts?",
+  "description": "Behavioral regression tests for Agent Skills. Catch missed activations and false triggers before release.",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://tripwire.bharath.sh",
   "repository": {
     "type": "git",
@@ -40,10 +43,13 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "build:web": "esbuild web/src/engine.ts --bundle --format=esm --outfile=web/engine.js --minify",
     "build:action": "esbuild src/action/main.ts --bundle --platform=node --target=node20 --format=esm --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=action-dist/index.js",
+    "verify:action": "npm run build:action && git diff --exit-code -- action-dist/index.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -63,7 +69,10 @@
     "tsup": "^8.0.0",
     "tsx": "^4.23.0",
     "typescript": "^5.4.0",
-    "vitest": "^2.0.0",
+    "vitest": "^4.1.10",
     "workers-og": "^0.0.27"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   }
 }
