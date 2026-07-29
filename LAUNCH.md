@@ -38,7 +38,7 @@ run within seven days, ideally from the GitHub Action.
 ### Release day
 
 1. Merge the release PR.
-2. Publish npm `0.1.2`.
+2. Publish the current npm release (`0.1.3`).
 3. Move the GitHub Action `v1` tag to the release commit.
 4. Confirm the source-controlled `PRODUCT_ANALYTICS` D1 binding is active after the site deploy.
 5. Verify npm install, the two-prompt Claude canary, the Action on a fixture PR, and the DAU event.

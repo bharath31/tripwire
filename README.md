@@ -9,7 +9,7 @@ the expected behavior, and gate every skill change in CI.
 
 [![CI](https://github.com/bharath31/tripwire/actions/workflows/ci.yml/badge.svg)](https://github.com/bharath31/tripwire/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/tripwire-skills)](https://www.npmjs.com/package/tripwire-skills)
-[![tests](https://img.shields.io/badge/tests-311%20passing-61d990)](#development)
+[![tests](https://img.shields.io/badge/tests-342%20passing-61d990)](#development)
 [![license](https://img.shields.io/badge/license-MIT-a2a3ad)](./LICENSE)
 
 [Quick start](#quick-start) · [GitHub Action](#github-action) · [How it works](#how-it-works) ·
@@ -217,11 +217,14 @@ The built-in rules cover frontmatter shape, kebab-case names, trigger-focused de
 description length, placeholder text, body length, and the presence of an example. Rules can be
 changed or extended with `tripwire.yaml`:
 
+Opinionated authoring style, including the exact `Use when` opening, is advisory by default.
+Teams that enforce that convention can promote it to an error:
+
 ```yaml
 extends: tripwire:recommended
 rules:
   no-code-example: off
-  description-use-when: warning
+  description-use-when: error
 plugins:
   - ./org-rules.mjs
 ```
@@ -262,7 +265,7 @@ npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 341 tests across the CLI, Action, adapters, lint engine, evals,
+The test suite currently contains 342 tests across the CLI, Action, adapters, lint engine, evals,
 drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
 browser bundle, audit production dependencies, verify the published package contents, and check the
 committed Action bundle.

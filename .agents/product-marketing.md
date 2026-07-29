@@ -152,9 +152,9 @@
 
 **Metrics:**
 
-- 341 automated tests pass after a build as of 2026-07-29.
+- 342 automated tests pass after a build as of 2026-07-29.
 - The full npm dependency tree has no reported audit vulnerabilities as of 2026-07-29.
-- The live site, npm `0.1.2` release, and GitHub Action `v1` are deployed and release-aligned.
+- The live site, npm `0.1.3` release candidate, and GitHub Action `v1` are release-aligned in source.
 - Market validation is still minimal: 2 GitHub stars, 14 unique repository clones in the 14 days ending 2026-07-28, and 11 npm downloads in the seven days ending 2026-07-28.
 
 **Customers:** No validated customer logos recorded.

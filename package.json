@@ -1,6 +1,6 @@
 {
   "name": "tripwire-skills",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Behavioral regression tests for Agent Skills. Catch missed activations and false triggers before release.",
   "type": "module",
   "license": "MIT",
