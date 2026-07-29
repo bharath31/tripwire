@@ -40,10 +40,16 @@ credentials. Local identity state lives at `$XDG_CONFIG_HOME/tripwire/telemetry.
 - Database: `tripwire-product-analytics`
 - Table: `behavioral_events`
 
-The deployment workflow applies the committed migration before publishing the Pages Function. The
-endpoint still returns `204` if the binding is absent, so telemetry never blocks the CLI. It returns
-`503` when a configured database rejects an event so operational checks can detect lost data; the
-CLI deliberately ignores that response.
+Apply committed migrations before deploying a function that depends on them:
+
+```bash
+npx wrangler d1 migrations apply tripwire-product-analytics --remote
+```
+
+The repository deployment token is intentionally limited to Pages publishing, so schema changes
+are an explicit operator step. The endpoint still returns `204` if the binding is absent, so
+telemetry never blocks the CLI. It returns `503` when a configured database rejects an event so
+operational checks can detect lost data; the CLI deliberately ignores that response.
 
 Example DAU query:
 
