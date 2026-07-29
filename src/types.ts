@@ -14,6 +14,7 @@ export interface Config {
   agent: string;
   model: string;
   judge_model: string;
+  concurrency: number;
   probe_count: { core: number; adjacent: number; negative: number; variants: number };
 }
 

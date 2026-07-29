@@ -224,7 +224,12 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   let probeResults;
   try {
     const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-    probeResults = await runProbes(matrix, adapter, (done) => bar.update(done));
+    probeResults = await runProbes(
+      matrix,
+      adapter,
+      (done) => bar.update(done),
+      config.concurrency,
+    );
   } finally {
     bar.stop();
     await probeWorkspace.cleanup();
@@ -381,10 +386,15 @@ program
         }];
         bar.update(1);
       } else {
-        results = await runScenariosFromFile(scenariosPath, adapter, (done, total) => {
-          if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
-          bar.update(done);
-        });
+        results = await runScenariosFromFile(
+          scenariosPath,
+          adapter,
+          (done, total) => {
+            if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
+            bar.update(done);
+          },
+          config.concurrency,
+        );
       }
     } finally {
       bar.stop();
@@ -450,7 +460,12 @@ program
       let results;
       try {
         const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-        results = await runScenariosFromFile(scenariosPath, adapter, () => {});
+        results = await runScenariosFromFile(
+          scenariosPath,
+          adapter,
+          () => {},
+          config.concurrency,
+        );
       } finally {
         await probeWorkspace.cleanup();
       }

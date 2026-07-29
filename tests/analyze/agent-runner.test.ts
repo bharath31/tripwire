@@ -61,4 +61,30 @@ describe('runProbes', () => {
     await runProbes(makeMatrix(), makeAdapter([]), (done, total) => progress.push([done, total]));
     expect(progress).toEqual([[1, 3], [2, 3], [3, 3]]);
   });
+
+  it('caps concurrent agent sessions and preserves result order', async () => {
+    const matrix: ProbeMatrix = {
+      skillName: 'demo',
+      prompts: Array.from({ length: 6 }, (_, index) => ({
+        zone: 'core',
+        prompt: `prompt ${index}`,
+      })),
+    };
+    let active = 0;
+    let maxActive = 0;
+    const adapter: AgentAdapter = {
+      run: vi.fn().mockImplementation(async (prompt: string) => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active--;
+        return { activated: true, rawOutput: prompt };
+      }),
+    };
+    const results = await runProbes(matrix, adapter, () => {}, 2);
+    expect(maxActive).toBe(2);
+    expect(results.map((result) => result.prompt.prompt)).toEqual(
+      matrix.prompts.map((prompt) => prompt.prompt),
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import yaml from 'js-yaml';
 import type { AgentAdapter, ProbeResult, ProbeZone, Scenario } from '../types.js';
+import { mapConcurrent } from '../concurrency.js';
 
 const ZONES = new Set<ProbeZone>(['core', 'adjacent', 'negative', 'variants']);
 
@@ -41,25 +42,19 @@ export async function runScenariosFromFile(
   scenariosPath: string,
   adapter: AgentAdapter,
   onProgress: (done: number, total: number) => void,
+  concurrency = 3,
 ): Promise<ProbeResult[]> {
   const raw = await readFile(scenariosPath, 'utf-8');
   const scenarios = parseScenarios(raw);
-  const results: ProbeResult[] = [];
-  const total = scenarios.length;
-
-  for (let i = 0; i < total; i++) {
-    const s = scenarios[i];
+  return mapConcurrent(scenarios, concurrency, async (s) => {
     const transcript = await adapter.run(s.prompt);
-    results.push({
+    return {
       prompt: {
         zone: s.zone,
         prompt: s.prompt,
         expectedActivation: s.expectedActivation,
       },
       transcript,
-    });
-    onProgress(i + 1, total);
-  }
-
-  return results;
+    };
+  }, onProgress);
 }

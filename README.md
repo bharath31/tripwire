@@ -165,6 +165,7 @@ can govern a whole skill library:
 agent: claude
 model: claude-sonnet-4-6
 judge_model: claude-haiku-4-5-20251001
+concurrency: 3
 probe_count:
   core: 8
   adjacent: 8
@@ -261,7 +262,7 @@ npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 338 tests across the CLI, Action, adapters, lint engine, evals,
+The test suite currently contains 340 tests across the CLI, Action, adapters, lint engine, evals,
 drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
 browser bundle, audit production dependencies, verify the published package contents, and check the
 committed Action bundle.

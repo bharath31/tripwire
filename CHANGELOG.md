@@ -15,6 +15,7 @@ All notable changes to Tripwire are documented here.
 - Made CLI behavioral gates fail on static lint errors.
 - Made scenario-only pull requests trigger the sibling skill in the GitHub Action.
 - Made nested skills inherit repository-level configuration and reject malformed cost settings.
+- Added bounded concurrency for agent sessions and judge calls.
 
 ### Product experience
 
@@ -27,7 +28,7 @@ All notable changes to Tripwire are documented here.
 ### Verification
 
 - Added CI across Node.js 20 and 22.
-- Expanded the suite to 338 tests.
+- Expanded the suite to 340 tests.
 - Added committed Action-bundle verification and npm package-content checks.
 
 ## 0.1.1

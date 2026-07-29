@@ -7422,6 +7422,35 @@ function emitAnnotations(file, raw, result, log = console.log) {
 
 // src/test/scenario-runner.ts
 import { readFile as readFile3 } from "node:fs/promises";
+
+// src/concurrency.ts
+async function mapConcurrent(items, concurrency, worker, onProgress = () => {
+}) {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error(`concurrency must be a positive integer, got ${concurrency}`);
+  }
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let completed = 0;
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+      completed++;
+      onProgress(completed, items.length);
+    }
+  };
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker()
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+// src/test/scenario-runner.ts
 var ZONES = /* @__PURE__ */ new Set(["core", "adjacent", "negative", "variants"]);
 function parseScenarios(raw) {
   const loaded = yaml2.load(raw, { schema: yaml2.DEFAULT_SCHEMA });
@@ -7447,25 +7476,20 @@ function parseScenarios(raw) {
     };
   });
 }
-async function runScenariosFromFile(scenariosPath, adapter, onProgress) {
+async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3) {
   const raw = await readFile3(scenariosPath, "utf-8");
   const scenarios = parseScenarios(raw);
-  const results = [];
-  const total = scenarios.length;
-  for (let i2 = 0; i2 < total; i2++) {
-    const s = scenarios[i2];
+  return mapConcurrent(scenarios, concurrency, async (s) => {
     const transcript = await adapter.run(s.prompt);
-    results.push({
+    return {
       prompt: {
         zone: s.zone,
         prompt: s.prompt,
         expectedActivation: s.expectedActivation
       },
       transcript
-    });
-    onProgress(i2 + 1, total);
-  }
-  return results;
+    };
+  }, onProgress);
 }
 
 // node_modules/is-plain-obj/index.js

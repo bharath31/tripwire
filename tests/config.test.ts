@@ -55,4 +55,9 @@ describe('loadConfig', () => {
     await writeFile(join(tmpDir, 'tripwire.yaml'), 'probe_count:\n  core: 1000\n');
     await expect(loadConfig(tmpDir)).rejects.toThrow('probe_count.core must be an integer from 0 to 100');
   });
+
+  it('rejects an unsafe concurrency burst', async () => {
+    await writeFile(join(tmpDir, 'tripwire.yaml'), 'concurrency: 20\n');
+    await expect(loadConfig(tmpDir)).rejects.toThrow('concurrency must be an integer from 1 to 10');
+  });
 });

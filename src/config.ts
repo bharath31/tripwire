@@ -7,6 +7,7 @@ export const defaultConfig: Config = {
   agent: 'claude',
   model: 'claude-sonnet-4-6',
   judge_model: 'claude-haiku-4-5-20251001',
+  concurrency: 3,
   probe_count: { core: 8, adjacent: 8, negative: 8, variants: 5 },
 };
 
@@ -31,6 +32,17 @@ export async function loadConfig(cwd: string = process.cwd()): Promise<Config> {
       throw new Error(`Invalid ${configPath}: ${key} must be a non-empty string`);
     }
     config[key] = parsed[key];
+  }
+
+  if (parsed.concurrency !== undefined) {
+    if (
+      !Number.isInteger(parsed.concurrency)
+      || (parsed.concurrency as number) < 1
+      || (parsed.concurrency as number) > 10
+    ) {
+      throw new Error(`Invalid ${configPath}: concurrency must be an integer from 1 to 10`);
+    }
+    config.concurrency = parsed.concurrency as number;
   }
 
   if (parsed.probe_count !== undefined) {
