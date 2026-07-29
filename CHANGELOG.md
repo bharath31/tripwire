@@ -16,6 +16,7 @@ All notable changes to Tripwire are documented here.
 - Made scenario-only pull requests trigger the sibling skill in the GitHub Action.
 - Made nested skills inherit repository-level configuration and reject malformed cost settings.
 - Added bounded concurrency for agent sessions and judge calls.
+- Pinned the Action's default Claude Code install to the live-inspected adapter version.
 
 ### Product experience
 

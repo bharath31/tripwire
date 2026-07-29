@@ -132,7 +132,7 @@ skipped and still runs static lint.
 | `probe` | `false` | Replay committed activation scenarios |
 | `fail-on-warning` | `false` | Treat lint warnings as failures |
 | `comment` | `true` | Post or update the PR summary |
-| `claude-version` | `latest` | Claude Code version installed for the probe |
+| `claude-version` | `2.1.220` | Live-inspected Claude Code version installed for the probe |
 | `working-directory` | `.` | Repository root used to resolve skills |
 | `anthropic-api-key` | unset | Probe credential; falls back to the environment |
 
