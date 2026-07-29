@@ -1,18 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tripwire: behavioral tests for Agent Skills</title>
-  <meta name="description" content="Run real agent sessions against your SKILL.md and block silent activation regressions before users encounter them." />
-  <meta property="og:title" content="Tripwire: behavioral tests for Agent Skills" />
-  <meta property="og:description" content="Catch skills that miss the right prompts or fire on the wrong ones. Test locally, commit the scenarios, and gate every PR." />
-  <meta property="og:type" content="website" />
-  <meta property="og:image" content="https://tripwire.bharath.sh/api/og" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://tripwire.bharath.sh/api/og" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff4d4d'/%3E%3Cline x1='0' y1='16' x2='32' y2='16' stroke='%23ff4d4d' stroke-width='2'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="./styles.css" />
+  <meta name="description" content="Run real agent sessions against your SKILL.md and block silent activation regressions before users encounter them.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <link rel="canonical" href="https://tripwire.bharath.sh/">
+  <link rel="alternate" type="text/plain" href="https://tripwire.bharath.sh/llms.txt" title="Tripwire for language models">
+  <meta property="og:title" content="Tripwire: behavioral tests for Agent Skills">
+  <meta property="og:description" content="Catch skills that miss the right prompts or fire on the wrong ones. Test locally, commit the scenarios, and gate every PR.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tripwire.bharath.sh/">
+  <meta property="og:site_name" content="Tripwire">
+  <meta property="og:image" content="https://tripwire.bharath.sh/api/og">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tripwire: behavioral tests for Agent Skills">
+  <meta name="twitter:description" content="Catch missed activations and false triggers in real agent sessions before release.">
+  <meta name="twitter:image" content="https://tripwire.bharath.sh/api/og">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff4d4d'/%3E%3Cline x1='0' y1='16' x2='32' y2='16' stroke='%23ff4d4d' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://tripwire.bharath.sh/#software",
+          "name": "Tripwire",
+          "alternateName": "tripwire-skills",
+          "description": "Behavioral regression tests for Agent Skills. Tripwire runs real agent sessions to catch missed activations and false triggers before release.",
+          "url": "https://tripwire.bharath.sh/",
+          "applicationCategory": "DeveloperApplication",
+          "applicationSubCategory": "Software testing",
+          "operatingSystem": "macOS, Linux, Windows",
+          "softwareVersion": "0.1.2",
+          "downloadUrl": "https://www.npmjs.com/package/tripwire-skills",
+          "codeRepository": "https://github.com/bharath31/tripwire",
+          "license": "https://opensource.org/license/mit",
+          "isAccessibleForFree": true,
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Bharath Natarajan",
+            "url": "https://github.com/bharath31"
+          },
+          "sameAs": [
+            "https://github.com/bharath31/tripwire",
+            "https://www.npmjs.com/package/tripwire-skills",
+            "https://github.com/marketplace/actions/tripwire-for-agent-skills"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://tripwire.bharath.sh/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What does Tripwire test?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Tripwire tests whether a real agent activates a specific Agent Skill for prompts that should match and stays quiet for prompts that should not. It compares structured activation signals with explicit expectations and turns those cases into regression scenarios for local and CI runs."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How is Tripwire different from a SKILL.md linter?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "A linter checks file structure and authoring rules. Tripwire also runs the skill through a real agent and observes whether it activates. That behavioral check catches valid-looking descriptions that miss intended prompts or trigger for unrelated requests."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Does Tripwire upload my skill or prompts?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Tripwire does not send skill files, prompts, file paths, repository names, model output, usernames, or credentials to its servers. Probes run locally or on your GitHub runner through your configured agent provider. Anonymous behavioral telemetry can be disabled with TRIPWIRE_TELEMETRY=0."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Which agents does Tripwire support?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The Claude Code adapter is live-verified and recommended for production gates. Codex CLI and Gemini CLI adapters are available as experimental checks with their confidence level reported explicitly."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How much does Tripwire cost?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Tripwire is free, MIT-licensed open-source software. Static lint is free to run. Behavioral probes use your existing agent login or provider credentials, so any model usage is billed by your provider rather than Tripwire."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  </script>
 </head>
 <body>
   <div class="wire-bg" aria-hidden="true"></div>
@@ -26,6 +117,7 @@
       <a href="#problem">Why Tripwire</a>
       <a href="#how">How it works</a>
       <a href="#ci">CI</a>
+      <a href="#faq">FAQ</a>
       <a href="#playground">Lint playground</a>
       <a class="nav-github" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
@@ -44,14 +136,14 @@
           <a class="btn btn-primary" href="#quickstart">Test your first skill</a>
           <a class="btn btn-ghost" href="#failed-run">See a failed run</a>
         </div>
-        <div class="trust-row" aria-label="Product facts">
+        <div class="trust-row" role="group" aria-label="Product facts">
           <span>Open source</span>
           <span>Runs on your machine</span>
           <span>Claude adapter live-verified</span>
         </div>
       </div>
 
-      <div class="hero-terminal" id="failed-run" aria-label="Example failed Tripwire run">
+      <div class="hero-terminal" id="failed-run">
         <div class="terminal-bar">
           <span class="terminal-dots" aria-hidden="true"></span>
           <span>tripwire test</span>
@@ -157,15 +249,15 @@ Running 4 committed scenarios...
       <div class="command-stack">
         <div class="command">
           <code><span>$</span> npm install -g tripwire-skills</code>
-          <button class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
+          <button type="button" class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
         </div>
         <div class="command">
           <code><span>$</span> tripwire lint ./skills/my-skill</code>
-          <button class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
+          <button type="button" class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
         </div>
         <div class="command command-accent">
           <code><span>$</span> tripwire test ./skills/my-skill --prompt "your real user prompt" --expect activate</code>
-          <button class="copy-btn" data-copy="tripwire test ./skills/my-skill --prompt &quot;your real user prompt&quot; --expect activate" aria-label="Copy behavioral test command">Copy</button>
+          <button type="button" class="copy-btn" data-copy="tripwire test ./skills/my-skill --prompt &quot;your real user prompt&quot; --expect activate" aria-label="Copy behavioral test command">Copy</button>
         </div>
       </div>
       <p class="quickstart-note">The one-prompt check does not need a Tripwire account or a separate generation key. <code>analyze</code> can then generate a larger positive and negative scenario matrix.</p>
@@ -226,6 +318,35 @@ Running 4 committed scenarios...
       </div>
     </section>
 
+    <section class="faq section" id="faq">
+      <div class="section-heading">
+        <p class="eyebrow">production questions</p>
+        <h2>What skill developers need to know.</h2>
+      </div>
+      <div class="faq-list">
+        <article>
+          <h3>What does Tripwire test?</h3>
+          <p>Tripwire tests whether a real agent activates a specific Agent Skill for prompts that should match and stays quiet for prompts that should not. It compares structured activation signals with explicit expectations and turns those cases into regression scenarios for local and CI runs.</p>
+        </article>
+        <article>
+          <h3>How is Tripwire different from a SKILL.md linter?</h3>
+          <p>A linter checks file structure and authoring rules. Tripwire also runs the skill through a real agent and observes whether it activates. That behavioral check catches valid-looking descriptions that miss intended prompts or trigger for unrelated requests.</p>
+        </article>
+        <article>
+          <h3>Does Tripwire upload my skill or prompts?</h3>
+          <p>Tripwire does not send skill files, prompts, file paths, repository names, model output, usernames, or credentials to its servers. Probes run locally or on your GitHub runner through your configured agent provider. Anonymous behavioral telemetry can be disabled with <code>TRIPWIRE_TELEMETRY=0</code>.</p>
+        </article>
+        <article>
+          <h3>Which agents does Tripwire support?</h3>
+          <p>The Claude Code adapter is live-verified and recommended for production gates. Codex CLI and Gemini CLI adapters are available as experimental checks with their confidence level reported explicitly.</p>
+        </article>
+        <article>
+          <h3>How much does Tripwire cost?</h3>
+          <p>Tripwire is free, MIT-licensed open-source software. Static lint is free to run. Behavioral probes use your existing agent login or provider credentials, so any model usage is billed by your provider rather than Tripwire.</p>
+        </article>
+      </div>
+    </section>
+
     <section class="playground section" id="playground">
       <div class="playground-head">
         <p class="eyebrow">free static check</p>
@@ -235,8 +356,8 @@ Running 4 committed scenarios...
 
       <div class="examples">
         <span>Load an example:</span>
-        <button class="chip" data-example="good">Well-formed skill</button>
-        <button class="chip" data-example="bad">Skill with problems</button>
+        <button type="button" class="chip" data-example="good">Well-formed skill</button>
+        <button type="button" class="chip" data-example="bad">Skill with problems</button>
       </div>
 
       <div class="pg-grid">
@@ -251,7 +372,7 @@ Running 4 committed scenarios...
       </div>
 
       <div class="share-row">
-        <button class="copy-btn" id="pg-share-link">Copy shareable link</button>
+        <button type="button" class="copy-btn" id="pg-share-link">Copy shareable link</button>
         <a class="copy-btn" id="pg-share-card" href="#" target="_blank" rel="noopener">Open share card image</a>
         <span id="pg-share-status" class="share-status" aria-live="polite"></span>
       </div>
@@ -268,7 +389,7 @@ Running 4 committed scenarios...
   </main>
 
   <footer class="footer">
-    <span>Tripwire is an open-source project by Bharath.</span>
+    <span>Tripwire is an open-source project by <a href="https://github.com/bharath31" target="_blank" rel="author noopener">Bharath Natarajan</a>. Updated <time datetime="2026-07-29">July 29, 2026</time>.</span>
     <div>
       <a href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub</a>
       <a href="#top">Back to top</a>
