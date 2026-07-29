@@ -152,10 +152,10 @@
 
 **Metrics:**
 
-- 340 automated tests pass after a build as of 2026-07-29.
+- 341 automated tests pass after a build as of 2026-07-29.
 - The full npm dependency tree has no reported audit vulnerabilities as of 2026-07-29.
-- Current source, npm release, and GitHub Action tag are not yet release-aligned.
-- Market validation is minimal: 0 GitHub stars/forks and 11 npm downloads in the seven days ending 2026-07-28.
+- The live site, npm `0.1.2` release, and GitHub Action `v1` are deployed and release-aligned.
+- Market validation is still minimal: 2 GitHub stars, 14 unique repository clones in the 14 days ending 2026-07-28, and 11 npm downloads in the seven days ending 2026-07-28.
 
 **Customers:** No validated customer logos recorded.
 
@@ -184,4 +184,4 @@
 
 **Launch target:** At least 100 DAU, with at least 40% of new activated repositories returning for a second behavioral run within 7 days. This retention target is an initial operating hypothesis and should be revised from real cohorts.
 
-**Current metrics:** Behavioral DAU instrumentation is implemented but requires the production Analytics Engine binding and a release. Public signals as of 2026-07-29 are 0 GitHub stars/forks and 11 npm downloads in the prior seven days.
+**Current metrics:** Behavioral DAU instrumentation is live on the production D1 event store. The first production query on 2026-07-29 recorded 0 real behavioral DAU before launch outreach. Public signals are 2 GitHub stars, 14 unique repository clones over the preceding 14 days, and 11 npm downloads in the preceding seven days.
