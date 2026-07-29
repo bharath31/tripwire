@@ -47,8 +47,8 @@ async function lintFailingSkill(): Promise<string> {
   await writeFile(
     skillPath,
     `---
-name: my-skill
-description: Handles code tasks
+name: MySkill
+description: Use when handling code tasks
 ---
 
 ## Instructions
@@ -111,6 +111,6 @@ describe('tripwire test --prompt (integration)', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toContain('description-use-when');
+    expect(result.stdout).toContain('name-kebab-case');
   });
 });

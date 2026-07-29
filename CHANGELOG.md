@@ -2,6 +2,20 @@
 
 All notable changes to Tripwire are documented here.
 
+## 0.1.3
+
+### Public-skill compatibility
+
+- Changed the exact `Use when` description style from a default error to an advisory warning.
+- Kept missing descriptions, invalid names, malformed frontmatter, and behavioral regressions as
+  blocking failures.
+- Preserved an opt-in strict gate with `description-use-when: error`.
+
+### Verification
+
+- Expanded the suite to 342 tests.
+- Added explicit test-discovery isolation for gitignored workspace data.
+
 ## 0.1.2
 
 ### Behavioral trust

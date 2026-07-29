@@ -4062,11 +4062,11 @@ var descriptionPresent = {
 };
 var descriptionUseWhen = {
   id: "description-use-when",
-  defaultLevel: "error",
+  defaultLevel: "warning",
   check: (skill) => {
     const desc = skill.frontmatter.description;
     if (!desc) return null;
-    return desc.startsWith("Use when") ? null : '`description` must start with "Use when"';
+    return desc.startsWith("Use when") ? null : '`description` should make activation conditions explicit; starting with "Use when" is recommended';
   }
 };
 var descriptionLength = {
@@ -14584,7 +14584,7 @@ import { dirname as dirname4, join as join4 } from "node:path";
 // package.json
 var package_default = {
   name: "tripwire-skills",
-  version: "0.1.2",
+  version: "0.1.3",
   description: "Behavioral regression tests for Agent Skills. Catch missed activations and false triggers before release.",
   type: "module",
   license: "MIT",

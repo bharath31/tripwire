@@ -29,11 +29,13 @@ export const descriptionPresent: Rule = {
 
 export const descriptionUseWhen: Rule = {
   id: 'description-use-when',
-  defaultLevel: 'error',
+  defaultLevel: 'warning',
   check: (skill) => {
     const desc = skill.frontmatter.description;
     if (!desc) return null; // covered by description-present
-    return desc.startsWith('Use when') ? null : '`description` must start with "Use when"';
+    return desc.startsWith('Use when')
+      ? null
+      : '`description` should make activation conditions explicit; starting with "Use when" is recommended';
   },
 };
 
