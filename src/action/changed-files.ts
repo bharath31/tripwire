@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 export function globToRegExp(pattern: string): RegExp {
   let re = '';
@@ -47,6 +49,20 @@ export function filterByPatterns(files: string[], patterns: string[]): string[] 
   return out;
 }
 
+export function skillFilesForChanges(
+  files: string[],
+  patterns: string[],
+  fileExists: (path: string) => boolean = existsSync,
+): string[] {
+  const directSkills = filterByPatterns(files, patterns);
+  const scenarioSkills = files
+    .filter((file) => basename(file) === 'tripwire-scenarios.yaml')
+    .map((file) => join(dirname(file), 'SKILL.md'))
+    .filter(fileExists);
+
+  return filterByPatterns([...directSkills, ...scenarioSkills], patterns);
+}
+
 export function getChangedSkillFiles(
   base: string,
   head: string,
@@ -59,5 +75,5 @@ export function getChangedSkillFiles(
     { cwd, encoding: 'utf-8' },
   );
   const files = out.split('\n').map((f) => f.trim()).filter(Boolean);
-  return filterByPatterns(files, patterns);
+  return skillFilesForChanges(files, patterns, (file) => existsSync(join(cwd, file)));
 }

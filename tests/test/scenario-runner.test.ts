@@ -44,6 +44,12 @@ describe('runScenariosFromFile', () => {
     expect(results[1].prompt.zone).toBe('negative');
   });
 
+  it('preserves the explicit activation expectation from the scenario file', async () => {
+    const results = await runScenariosFromFile(scenariosPath, mockAdapter, () => {});
+    expect(results[0].prompt.expectedActivation).toBe(true);
+    expect(results[1].prompt.expectedActivation).toBe(false);
+  });
+
   it('calls onProgress with (done, total) after each run', async () => {
     const calls: [number, number][] = [];
     await runScenariosFromFile(scenariosPath, mockAdapter, (d, t) => calls.push([d, t]));
@@ -52,5 +58,13 @@ describe('runScenariosFromFile', () => {
 
   it('throws ENOENT when file not found', async () => {
     await expect(runScenariosFromFile('/no/file.yaml', mockAdapter, () => {})).rejects.toThrow('ENOENT');
+  });
+
+  it('rejects malformed scenario files with a clear error', async () => {
+    const malformed = join(tmpDir, 'malformed.yaml');
+    await writeFile(malformed, 'skillName: demo\nscenarios: nope\n', 'utf-8');
+    await expect(runScenariosFromFile(malformed, mockAdapter, () => {})).rejects.toThrow(
+      'expected a top-level `scenarios` array',
+    );
   });
 });

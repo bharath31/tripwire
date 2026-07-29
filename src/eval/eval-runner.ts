@@ -22,6 +22,15 @@ export async function runEvalCase(
   opts: RunEvalsOptions = {},
 ): Promise<EvalCaseResult> {
   const transcript = await adapter.run(evalCase.prompt);
+  if (transcript.error) {
+    return {
+      case: evalCase,
+      rawOutput: transcript.rawOutput,
+      assertionResults: [],
+      infrastructureError: transcript.error,
+      passed: false,
+    };
+  }
   const assertionResults = checkAssertions(transcript.rawOutput, evalCase.assertions ?? []);
   const assertionsPassed = assertionResults.every((r) => r.passed);
 

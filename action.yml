@@ -19,7 +19,7 @@ inputs:
     default: 'true'
   claude-version:
     description: 'Version of @anthropic-ai/claude-code to install for the probe.'
-    default: 'latest'
+    default: '2.1.220'
   working-directory:
     description: 'Root to resolve skills and run the probe from.'
     default: '.'

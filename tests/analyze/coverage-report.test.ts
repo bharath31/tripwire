@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { ProbeResult, LintResult, ProbeZone } from '../../src/types.js';
-import { buildCoverageReport, renderCoverageReport } from '../../src/analyze/coverage-report.js';
+import {
+  buildCoverageReport,
+  renderCoverageReport,
+  coverageExitCode,
+} from '../../src/analyze/coverage-report.js';
 
 const noLint: LintResult = { errors: [], warnings: [] };
 
@@ -20,10 +24,10 @@ describe('buildCoverageReport', () => {
       r('negative', true),
       r('variants', true),
     ]);
-    expect(report.zones.core).toEqual({ activated: 2, total: 3 });
-    expect(report.zones.adjacent).toEqual({ activated: 0, total: 1 });
-    expect(report.zones.negative).toEqual({ activated: 1, total: 1 });
-    expect(report.zones.variants).toEqual({ activated: 1, total: 1 });
+    expect(report.zones.core).toEqual({ activated: 2, matched: 2, total: 3 });
+    expect(report.zones.adjacent).toEqual({ activated: 0, matched: 0, total: 1 });
+    expect(report.zones.negative).toEqual({ activated: 1, matched: 0, total: 1 });
+    expect(report.zones.variants).toEqual({ activated: 1, matched: 1, total: 1 });
   });
 
   it('gaps are non-negative misses', () => {
@@ -66,7 +70,24 @@ describe('buildCoverageReport', () => {
 
   it('generates suggestions for false positives', () => {
     const report = buildCoverageReport('brainstorming', noLint, [r('negative', true)]);
-    expect(report.suggestions.some(s => s.toLowerCase().includes('prohibition'))).toBe(true);
+    expect(report.suggestions.some(s => s.toLowerCase().includes('narrow'))).toBe(true);
+  });
+
+  it('honors an explicit expectation instead of inferring it from the zone', () => {
+    const result = r('negative', true, 'an unusual but supported prompt');
+    result.prompt.expectedActivation = true;
+    const report = buildCoverageReport('brainstorming', noLint, [result]);
+    expect(report.falsePositives).toHaveLength(0);
+    expect(report.gaps).toHaveLength(0);
+  });
+
+  it('separates infrastructure failures from behavioral gaps', () => {
+    const result = r('core', false, 'supported prompt');
+    result.transcript.error = 'agent timed out';
+    const report = buildCoverageReport('brainstorming', noLint, [result]);
+    expect(report.gaps).toHaveLength(0);
+    expect(report.infrastructureErrors).toHaveLength(1);
+    expect(coverageExitCode(report)).toBe(1);
   });
 });
 
@@ -104,5 +125,14 @@ describe('renderCoverageReport', () => {
     const report = buildCoverageReport('brainstorming', noLint, [r('core', true)]);
     const out = renderCoverageReport(report);
     expect(out).not.toContain('GAPS');
+  });
+
+  it('renders infrastructure errors separately', () => {
+    const result = r('core', false, 'prompt');
+    result.transcript.error = 'missing CLI';
+    const report = buildCoverageReport('brainstorming', noLint, [result]);
+    const out = renderCoverageReport(report);
+    expect(out).toContain('INFRASTRUCTURE ERRORS');
+    expect(out).toContain('missing CLI');
   });
 });
