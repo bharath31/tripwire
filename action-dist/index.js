@@ -14619,7 +14619,7 @@ var package_default = {
     "prompt-testing"
   ],
   bin: {
-    tripwire: "./dist/cli.js"
+    tripwire: "dist/cli.js"
   },
   files: [
     "dist"
