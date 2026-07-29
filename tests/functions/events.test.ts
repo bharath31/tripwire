@@ -11,42 +11,55 @@ const validEvent = {
   version: '0.1.2',
 } as const;
 
-function context(body: unknown, writeDataPoint = vi.fn()) {
+function database(run = vi.fn().mockResolvedValue({ success: true })) {
+  const statement = {
+    bind: vi.fn(),
+    run,
+  };
+  statement.bind.mockReturnValue(statement);
+  return {
+    prepare: vi.fn().mockReturnValue(statement),
+    statement,
+  };
+}
+
+function context(body: unknown, productAnalytics = database()) {
   return {
     request: new Request('https://tripwire.bharath.sh/api/events', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
-    env: { PRODUCT_ANALYTICS: { writeDataPoint } },
+    env: { PRODUCT_ANALYTICS: productAnalytics },
   };
 }
 
 describe('/api/events', () => {
   it('records an allowlisted behavioral event', async () => {
-    const writeDataPoint = vi.fn();
-    const response = await onRequest(context(validEvent, writeDataPoint));
+    const productAnalytics = database();
+    const response = await onRequest(context(validEvent, productAnalytics));
     expect(response.status).toBe(204);
-    expect(writeDataPoint).toHaveBeenCalledWith({
-      indexes: [validEvent.installation_id],
-      blobs: [
-        validEvent.event,
-        validEvent.command,
-        validEvent.agent,
-        validEvent.outcome,
-        validEvent.version,
-        validEvent.source,
-      ],
-      doubles: [1],
-    });
+    expect(productAnalytics.prepare).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO behavioral_events'),
+    );
+    expect(productAnalytics.statement.bind).toHaveBeenCalledWith(
+      validEvent.installation_id,
+      validEvent.event,
+      validEvent.command,
+      validEvent.agent,
+      validEvent.outcome,
+      validEvent.version,
+      validEvent.source,
+    );
+    expect(productAnalytics.statement.run).toHaveBeenCalledOnce();
   });
 
   it('rejects invalid or expanded payloads', async () => {
-    const writeDataPoint = vi.fn();
-    const response = await onRequest(context({ ...validEvent, prompt: 'private prompt' }, writeDataPoint));
+    const productAnalytics = database();
+    const response = await onRequest(context({ ...validEvent, prompt: 'private prompt' }, productAnalytics));
     expect(response.status).toBe(204);
-    expect(writeDataPoint).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(writeDataPoint.mock.calls[0])).not.toContain('private prompt');
+    expect(productAnalytics.statement.run).toHaveBeenCalledOnce();
+    expect(JSON.stringify(productAnalytics.statement.bind.mock.calls[0])).not.toContain('private prompt');
   });
 
   it('returns 400 for an invalid identity', async () => {
@@ -60,5 +73,11 @@ describe('/api/events', () => {
       env: {},
     });
     expect(response.status).toBe(204);
+  });
+
+  it('returns 503 when the event cannot be persisted', async () => {
+    const productAnalytics = database(vi.fn().mockRejectedValue(new Error('D1 unavailable')));
+    const response = await onRequest(context(validEvent, productAnalytics));
+    expect(response.status).toBe(503);
   });
 });

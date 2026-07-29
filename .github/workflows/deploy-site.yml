@@ -10,6 +10,7 @@ on:
     paths:
       - "web/**"
       - "functions/**"
+      - "migrations/**"
       - "src/**" # the Pages Functions bundle src/lint + src/engine
       - "package.json"
       - "package-lock.json"
@@ -39,6 +40,9 @@ jobs:
       - run: npm ci
       - name: Build the browser bundle
         run: npm run build:web
+      - name: Apply product analytics migrations
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        run: npx --yes wrangler@4 d1 migrations apply tripwire-product-analytics --remote
       - name: Publish to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: npx --yes wrangler@4 pages deploy --branch=main

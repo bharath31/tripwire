@@ -40,7 +40,7 @@ run within seven days, ideally from the GitHub Action.
 1. Merge the release PR.
 2. Publish npm `0.1.2`.
 3. Move the GitHub Action `v1` tag to the release commit.
-4. Confirm the source-controlled `PRODUCT_ANALYTICS` Analytics Engine binding is active after the site deploy.
+4. Confirm the source-controlled `PRODUCT_ANALYTICS` D1 binding is active after the site deploy.
 5. Verify npm install, the two-prompt Claude canary, the Action on a fixture PR, and the DAU event.
 6. Publish the announcement below on GitHub, X, LinkedIn, Hacker News, and relevant skill-developer
    communities.
@@ -94,4 +94,4 @@ Source and quickstart: https://github.com/bharath31/tripwire
 | Retention | Second valid run within seven days | Make CI and drift checks habitual |
 | Reliability | Infrastructure-error rate | Fix adapters before adding traffic |
 
-The Analytics Engine query and privacy contract are in [docs/analytics.md](./docs/analytics.md).
+The D1 query and privacy contract are in [docs/analytics.md](./docs/analytics.md).
