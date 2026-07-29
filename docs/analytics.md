@@ -34,26 +34,34 @@ credentials. Local identity state lives at `$XDG_CONFIG_HOME/tripwire/telemetry.
 
 ## Cloudflare setup
 
-[`wrangler.jsonc`](../wrangler.jsonc) declares the Pages project and its Analytics Engine binding:
+[`wrangler.jsonc`](../wrangler.jsonc) declares the Pages project and its D1 binding:
 
 - Variable name: `PRODUCT_ANALYTICS`
-- Dataset: `tripwire_product_events`
+- Database: `tripwire-product-analytics`
+- Table: `behavioral_events`
 
-The dataset is created automatically on its first write. The endpoint still returns `204` if the
-binding is absent, so telemetry never blocks the CLI.
+The deployment workflow applies the committed migration before publishing the Pages Function. The
+endpoint still returns `204` if the binding is absent, so telemetry never blocks the CLI. It returns
+`503` when a configured database rejects an event so operational checks can detect lost data; the
+CLI deliberately ignores that response.
 
 Example DAU query:
 
 ```sql
 SELECT
-  toDate(timestamp) AS day,
-  COUNT(DISTINCT index1) AS dau
-FROM tripwire_product_events
+  date(occurred_at) AS day,
+  COUNT(DISTINCT installation_id) AS dau
+FROM behavioral_events
 WHERE
-  blob1 = 'behavioral_run_completed'
-  AND blob4 IN ('pass', 'behavior_failure')
+  event = 'behavioral_run_completed'
+  AND outcome IN ('pass', 'behavior_failure')
 GROUP BY day
 ORDER BY day DESC
 ```
 
-`blob1` through `blob6` map to event, command, agent, outcome, version, and source.
+Run it against production with:
+
+```bash
+npx wrangler d1 execute tripwire-product-analytics --remote \
+  --command "SELECT date(occurred_at) AS day, COUNT(DISTINCT installation_id) AS dau FROM behavioral_events WHERE event = 'behavioral_run_completed' AND outcome IN ('pass', 'behavior_failure') GROUP BY day ORDER BY day DESC"
+```

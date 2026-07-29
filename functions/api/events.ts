@@ -11,18 +11,19 @@ interface EventPayload {
   version: string;
 }
 
-interface AnalyticsDataset {
-  writeDataPoint(point: {
-    indexes: string[];
-    blobs: string[];
-    doubles: number[];
-  }): void;
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<unknown>;
+}
+
+interface D1Database {
+  prepare(query: string): D1PreparedStatement;
 }
 
 interface PagesContext {
   request: Request;
   env: {
-    PRODUCT_ANALYTICS?: AnalyticsDataset;
+    PRODUCT_ANALYTICS?: D1Database;
   };
 }
 
@@ -61,18 +62,37 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
   }
   if (!validPayload(payload)) return new Response('Invalid event', { status: 400 });
 
-  context.env.PRODUCT_ANALYTICS?.writeDataPoint({
-    indexes: [payload.installation_id],
-    blobs: [
-      payload.event,
-      payload.command,
-      payload.agent,
-      payload.outcome,
-      payload.version,
-      payload.source,
-    ],
-    doubles: [1],
-  });
+  if (context.env.PRODUCT_ANALYTICS) {
+    try {
+      await context.env.PRODUCT_ANALYTICS
+        .prepare(`
+          INSERT INTO behavioral_events (
+            installation_id,
+            event,
+            command,
+            agent,
+            outcome,
+            version,
+            source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `)
+        .bind(
+          payload.installation_id,
+          payload.event,
+          payload.command,
+          payload.agent,
+          payload.outcome,
+          payload.version,
+          payload.source,
+        )
+        .run();
+    } catch {
+      return new Response('Event storage unavailable', {
+        status: 503,
+        headers: { 'cache-control': 'no-store' },
+      });
+    }
+  }
 
   return new Response(null, {
     status: 204,
