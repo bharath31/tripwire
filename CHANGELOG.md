@@ -29,7 +29,7 @@ All notable changes to Tripwire are documented here.
 ### Verification
 
 - Added CI across Node.js 20 and 22.
-- Expanded the suite to 340 tests.
+- Expanded the suite to 341 tests.
 - Added committed Action-bundle verification and npm package-content checks.
 
 ## 0.1.1

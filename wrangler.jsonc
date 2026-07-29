@@ -2,10 +2,12 @@
   "name": "tripwire",
   "pages_build_output_dir": "./web",
   "compatibility_date": "2026-07-29",
-  "analytics_engine_datasets": [
+  "d1_databases": [
     {
       "binding": "PRODUCT_ANALYTICS",
-      "dataset": "tripwire_product_events"
+      "database_name": "tripwire-product-analytics",
+      "database_id": "4e8de49f-f6c3-4f07-968f-6fc10378aa02",
+      "migrations_dir": "migrations"
     }
   ]
 }
