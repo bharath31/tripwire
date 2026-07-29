@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
 import { loadConfig, defaultConfig } from '../src/config.js';
@@ -37,5 +37,22 @@ describe('loadConfig', () => {
   it('uses process.cwd() when no arg given', async () => {
     const config = await loadConfig();
     expect(config).toBeDefined();
+  });
+
+  it('discovers a repository-level config from a nested skill directory', async () => {
+    const nested = join(tmpDir, 'skills', 'review');
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(tmpDir, 'tripwire.yaml'), 'agent: codex\n');
+    expect((await loadConfig(nested)).agent).toBe('codex');
+  });
+
+  it('rejects a non-mapping config instead of silently using defaults', async () => {
+    await writeFile(join(tmpDir, 'tripwire.yaml'), '- not\n- a\n- mapping\n');
+    await expect(loadConfig(tmpDir)).rejects.toThrow('expected a YAML mapping');
+  });
+
+  it('rejects unsafe or malformed probe counts', async () => {
+    await writeFile(join(tmpDir, 'tripwire.yaml'), 'probe_count:\n  core: 1000\n');
+    await expect(loadConfig(tmpDir)).rejects.toThrow('probe_count.core must be an integer from 0 to 100');
   });
 });

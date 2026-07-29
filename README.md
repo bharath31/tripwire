@@ -158,7 +158,8 @@ Agent support is intentionally explicit:
 | Codex CLI | Read of the matching `skills/<name>/SKILL.md` path | Experimental; heuristic |
 
 Use `--agent claude`, `--agent gemini`, or `--agent codex`. The default can also be set in
-`tripwire.yaml`:
+`tripwire.yaml`. Tripwire searches from the skill directory toward the repository root, so one file
+can govern a whole skill library:
 
 ```yaml
 agent: claude
@@ -260,7 +261,7 @@ npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 333 tests across the CLI, Action, adapters, lint engine, evals,
+The test suite currently contains 338 tests across the CLI, Action, adapters, lint engine, evals,
 drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
 browser bundle, audit production dependencies, verify the published package contents, and check the
 committed Action bundle.

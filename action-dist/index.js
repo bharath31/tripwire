@@ -3617,12 +3617,12 @@ var require_isexe = __commonJS({
         if (typeof Promise !== "function") {
           throw new TypeError("callback not provided");
         }
-        return new Promise(function(resolve2, reject) {
+        return new Promise(function(resolve3, reject) {
           isexe(path6, options2 || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
-              resolve2(is);
+              resolve3(is);
             }
           });
         });
@@ -3688,27 +3688,27 @@ var require_which = __commonJS({
         opt = {};
       const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
       const found = [];
-      const step = (i2) => new Promise((resolve2, reject) => {
+      const step = (i2) => new Promise((resolve3, reject) => {
         if (i2 === pathEnv.length)
-          return opt.all && found.length ? resolve2(found) : reject(getNotFoundError(cmd));
+          return opt.all && found.length ? resolve3(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i2];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
         const pCmd = path6.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve2(subStep(p, i2, 0));
+        resolve3(subStep(p, i2, 0));
       });
-      const subStep = (p, i2, ii) => new Promise((resolve2, reject) => {
+      const subStep = (p, i2, ii) => new Promise((resolve3, reject) => {
         if (ii === pathExt.length)
-          return resolve2(step(i2 + 1));
+          return resolve3(step(i2 + 1));
         const ext = pathExt[ii];
         isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
           if (!er && is) {
             if (opt.all)
               found.push(p + ext);
             else
-              return resolve2(p + ext);
+              return resolve3(p + ext);
           }
-          return resolve2(subStep(p, i2, ii + 1));
+          return resolve3(subStep(p, i2, ii + 1));
         });
       });
       return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
@@ -4021,7 +4021,7 @@ var require_cross_spawn = __commonJS({
 });
 
 // src/action/main.ts
-import { dirname as dirname3, join as join5, basename as basename2 } from "node:path";
+import { dirname as dirname5, join as join5, basename as basename2 } from "node:path";
 import { existsSync as existsSync2 } from "node:fs";
 import { readFileSync as readFileSync3 } from "node:fs";
 
@@ -4165,7 +4165,7 @@ function lint(skill, ruleConfig, extraRules = []) {
 
 // src/lint/config.ts
 import { readFile as readFile2 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname as dirname2 } from "node:path";
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 function getDefaultExportFromCjs(x) {
@@ -7261,15 +7261,36 @@ async function loadCustomRules(filePath, baseDir = process.cwd()) {
   return rules;
 }
 
+// src/config-path.ts
+import { access } from "node:fs/promises";
+import { dirname, join, resolve as resolve2 } from "node:path";
+async function findTripwireConfig(startDir) {
+  let current = resolve2(startDir);
+  while (true) {
+    const candidate = join(current, "tripwire.yaml");
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+    }
+    const parent = dirname(current);
+    if (parent === current) return void 0;
+    current = parent;
+  }
+}
+
 // src/lint/config.ts
 async function loadLintConfig(cwd = process.cwd()) {
-  let raw;
-  try {
-    const text = await readFile2(join(cwd, "tripwire.yaml"), "utf-8");
-    raw = yaml2.load(text, { schema: yaml2.DEFAULT_SCHEMA }) ?? {};
-  } catch {
-    return { ruleConfig: {}, customRules: [] };
+  const configPath = await findTripwireConfig(cwd);
+  if (!configPath) return { ruleConfig: {}, customRules: [] };
+  const text = await readFile2(configPath, "utf-8");
+  const value = yaml2.load(text, { schema: yaml2.DEFAULT_SCHEMA });
+  if (value == null) return { ruleConfig: {}, customRules: [] };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid ${configPath}: expected a YAML mapping`);
   }
+  const raw = value;
+  const configDir = dirname2(configPath);
   const extendsNames = raw.extends ? Array.isArray(raw.extends) ? raw.extends : [raw.extends] : [];
   let ruleConfig = {};
   for (const name of extendsNames) {
@@ -7278,7 +7299,7 @@ async function loadLintConfig(cwd = process.cwd()) {
   ruleConfig = { ...ruleConfig, ...raw.rules ?? {} };
   const customRules = [];
   for (const pluginPath of raw.plugins ?? []) {
-    customRules.push(...await loadCustomRules(pluginPath, cwd));
+    customRules.push(...await loadCustomRules(pluginPath, configDir));
   }
   return { ruleConfig, customRules };
 }
@@ -7286,7 +7307,7 @@ async function loadLintConfig(cwd = process.cwd()) {
 // src/action/changed-files.ts
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename, dirname, join as join2 } from "node:path";
+import { basename, dirname as dirname3, join as join2 } from "node:path";
 function globToRegExp(pattern) {
   let re = "";
   for (let i2 = 0; i2 < pattern.length; i2++) {
@@ -7328,7 +7349,7 @@ function filterByPatterns(files, patterns) {
 }
 function skillFilesForChanges(files, patterns, fileExists = existsSync) {
   const directSkills = filterByPatterns(files, patterns);
-  const scenarioSkills = files.filter((file) => basename(file) === "tripwire-scenarios.yaml").map((file) => join2(dirname(file), "SKILL.md")).filter(fileExists);
+  const scenarioSkills = files.filter((file) => basename(file) === "tripwire-scenarios.yaml").map((file) => join2(dirname3(file), "SKILL.md")).filter(fileExists);
   return filterByPatterns([...directSkills, ...scenarioSkills], patterns);
 }
 function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
@@ -8995,8 +9016,8 @@ var disconnect = (anyProcess) => {
 // node_modules/execa/lib/utils/deferred.js
 var createDeferred = () => {
   const methods = {};
-  const promise = new Promise((resolve2, reject) => {
-    Object.assign(methods, { resolve: resolve2, reject });
+  const promise = new Promise((resolve3, reject) => {
+    Object.assign(methods, { resolve: resolve3, reject });
   });
   return Object.assign(promise, methods);
 };
@@ -13638,11 +13659,11 @@ var addConcurrentStream = (concurrentStreams, stream, waitName) => {
   const promises = weakMap.get(stream);
   const promise = createDeferred();
   promises.push(promise);
-  const resolve2 = promise.resolve.bind(promise);
-  return { resolve: resolve2, promises };
+  const resolve3 = promise.resolve.bind(promise);
+  return { resolve: resolve3, promises };
 };
-var waitForConcurrentStreams = async ({ resolve: resolve2, promises }, subprocess) => {
-  resolve2();
+var waitForConcurrentStreams = async ({ resolve: resolve3, promises }, subprocess) => {
+  resolve3();
   const [isSubprocessExit] = await Promise.race([
     Promise.allSettled([true, subprocess]),
     Promise.all([false, ...promises])
@@ -14534,7 +14555,7 @@ function readContext(env, readEventFile) {
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir as mkdir2, readFile as readFile4, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname as dirname2, join as join4 } from "node:path";
+import { dirname as dirname4, join as join4 } from "node:path";
 
 // package.json
 var package_default = {
@@ -14642,7 +14663,7 @@ async function localIdentity(env, homeDir) {
   } catch {
   }
   state ??= { installationId: randomUUID(), noticeShown: false };
-  await mkdir2(dirname2(path6), { recursive: true });
+  await mkdir2(dirname4(path6), { recursive: true });
   await writeFile(path6, JSON.stringify(state, null, 2) + "\n", { mode: 384 });
   return {
     id: hashIdentity(state.installationId),
@@ -14736,8 +14757,8 @@ async function main() {
     const file = join5(cwd, rel);
     const raw = readFileSync3(file, "utf-8");
     const skill = await parseSkill(file);
-    const skillName = skill.frontmatter.name ?? basename2(dirname3(file));
-    const { ruleConfig, customRules } = await loadLintConfig(dirname3(file));
+    const skillName = skill.frontmatter.name ?? basename2(dirname5(file));
+    const { ruleConfig, customRules } = await loadLintConfig(dirname5(file));
     const lintResult = lint(skill, ruleConfig, customRules);
     emitAnnotations(rel, raw, lintResult);
     const report = { skillName, file: rel, lint: lintResult };
@@ -14747,7 +14768,7 @@ async function main() {
         report.probeSkipped = reason;
         console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
       } else {
-        const scenariosPath = join5(dirname3(file), "tripwire-scenarios.yaml");
+        const scenariosPath = join5(dirname5(file), "tripwire-scenarios.yaml");
         if (!existsSync2(scenariosPath)) {
           const reason = "no tripwire-scenarios.yaml (run `tripwire analyze` locally and commit it)";
           report.probeSkipped = reason;
