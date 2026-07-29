@@ -1,0 +1,39 @@
+# Tripwire
+
+> Tripwire is an open-source behavioral testing and CI tool for Agent Skills. It runs real agent sessions to catch missed activations and false triggers that static SKILL.md lint cannot observe.
+
+Tripwire treats an Agent Skill description as routing code. A developer defines prompts that should activate a skill and prompts that should stay outside it. Tripwire observes the agent's structured skill-activation event, compares the result with the explicit expectation, and produces a pass, behavioral failure, or infrastructure error.
+
+## Start here
+
+- [Install and quickstart](https://github.com/bharath31/tripwire#quick-start): Test one real prompt, generate a scenario matrix, and commit the regression contract.
+- [npm package](https://www.npmjs.com/package/tripwire-skills): Install the `tripwire` CLI.
+- [GitHub Action](https://github.com/marketplace/actions/tripwire-for-agent-skills): Gate changed SKILL.md files and committed scenarios on pull requests.
+- [Source code](https://github.com/bharath31/tripwire): MIT-licensed TypeScript source, issue tracker, and release history.
+
+## Product facts
+
+- Category: behavioral regression testing and CI for Agent Skills.
+- Primary use case: prevent a published skill from silently missing intended prompts or activating for unrelated prompts.
+- Production adapter: Claude Code.
+- Experimental adapters: Codex CLI and Gemini CLI.
+- Price: free and MIT licensed; behavioral probes use the developer's own agent login or provider credentials.
+- Runtime safety: probes stage only the target skill in a disposable workspace and use plan or read-only agent modes.
+- Privacy: Tripwire does not collect prompts, skill names, paths, repositories, model output, usernames, or credentials. Anonymous behavioral telemetry is optional and documented.
+
+## Trust and operations
+
+- [Security policy](https://github.com/bharath31/tripwire/blob/main/SECURITY.md): Threat model, credential handling, and vulnerability reporting.
+- [Product analytics](https://github.com/bharath31/tripwire/blob/main/docs/analytics.md): Exact event allowlist, privacy controls, DAU, and retention definitions.
+- [Release notes](https://github.com/bharath31/tripwire/releases): Shipped versions and verification details.
+- [Pricing](https://tripwire.bharath.sh/pricing.md): Machine-readable cost and licensing information.
+
+## Commands
+
+- `tripwire lint <path>`: static SKILL.md checks.
+- `tripwire test <skill> --prompt "..." --expect activate|quiet`: one-prompt real-agent activation check.
+- `tripwire analyze <skill>`: generate positive, negative, edge, and paraphrased scenarios and probe them.
+- `tripwire test <skill>`: replay a committed `tripwire-scenarios.yaml`.
+- `tripwire test-all <directory>`: replay a skill library and expose model drift.
+- `tripwire conflicts <directory>`: find duplicate names and likely routing overlap.
+- `tripwire eval <skill>`: assert response behavior after activation.
