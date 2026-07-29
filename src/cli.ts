@@ -14,16 +14,24 @@ import { loadConfig } from './config.js';
 import { generateProbeMatrix } from './analyze/probe-generator.js';
 import { runProbes } from './analyze/agent-runner.js';
 import { judgeActivatedSessions } from './analyze/judge.js';
-import { buildCoverageReport, renderCoverageReport, exportScenarios } from './analyze/coverage-report.js';
+import {
+  buildCoverageReport,
+  renderCoverageReport,
+  exportScenarios,
+  coverageExitCode,
+} from './analyze/coverage-report.js';
 import { ClaudeCodeAdapter } from './adapters/claude-code.js';
 import { GeminiCliAdapter } from './adapters/gemini-cli.js';
 import { CodexCliAdapter } from './adapters/codex-cli.js';
 import { runScenariosFromFile } from './test/scenario-runner.js';
+import { buildInlineScenario } from './test/inline-scenario.js';
 import { summarizeDrift, renderDriftSummary } from './test/drift.js';
 import type { SkillDriftResult, SkippedSkill } from './test/drift.js';
 import { findRepoRoot, scaffoldWorkflow, scaffoldDriftWorkflow } from './init/scaffold.js';
 import { runEvalsFromFile } from './eval/eval-runner.js';
 import { renderEvalReport, evalExitCode } from './eval/reporter.js';
+import { createProbeWorkspace } from './probe-workspace.js';
+import { trackBehavioralRun } from './telemetry.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { AgentAdapter } from './types.js';
@@ -38,11 +46,11 @@ function assertValidAgent(agent: string): void {
   }
 }
 
-function resolveAdapter(agent: string, skillName: string): AgentAdapter {
+function resolveAdapter(agent: string, skillName: string, cwd?: string): AgentAdapter {
   switch (agent as AgentName) {
-    case 'claude': return new ClaudeCodeAdapter(skillName);
-    case 'gemini': return new GeminiCliAdapter(skillName);
-    case 'codex': return new CodexCliAdapter(skillName);
+    case 'claude': return new ClaudeCodeAdapter(skillName, { cwd });
+    case 'gemini': return new GeminiCliAdapter(skillName, { cwd });
+    case 'codex': return new CodexCliAdapter(skillName, { cwd });
   }
 }
 
@@ -164,8 +172,11 @@ program
 
 interface AnalyzeOpts { model?: string; judgeModel?: string; agent?: string }
 
+const warnedUnverifiedAgents = new Set<string>();
+
 function warnIfUnverifiedAgent(agent: string): void {
-  if (agent === 'gemini' || agent === 'codex') {
+  if ((agent === 'gemini' || agent === 'codex') && !warnedUnverifiedAgents.has(agent)) {
+    warnedUnverifiedAgents.add(agent);
     console.log(chalk.yellow(`⚠ --agent ${agent}: activation detection for this adapter is not verified against a live install`));
     if (agent === 'codex') {
       console.log(chalk.yellow('  (Codex CLI has no dedicated skill event; detection is a heuristic — see src/analyze/codex-transcript-parser.ts)'));
@@ -181,15 +192,14 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
     process.exit(1);
   }
 
-  const agent = opts.agent ?? 'claude';
-  assertValidAgent(agent);
-  warnIfUnverifiedAgent(agent);
-
   const filePath = await resolveSkillFilePath(skillPath);
   const skill = await parseSkill(filePath);
   const config = await loadConfig(dirname(filePath));
   if (opts.model) config.model = opts.model;
   if (opts.judgeModel) config.judge_model = opts.judgeModel;
+  const agent = opts.agent ?? config.agent;
+  assertValidAgent(agent);
+  warnIfUnverifiedAgent(agent);
 
   const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
   const lintResult = lint(skill, ruleConfig, customRules);
@@ -209,9 +219,21 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   });
   bar.start(matrix.prompts.length, 0);
 
-  const adapter = resolveAdapter(agent, skill.frontmatter.name ?? 'unknown');
-  let probeResults = await runProbes(matrix, adapter, (done) => bar.update(done));
-  bar.stop();
+  const skillName = skill.frontmatter.name ?? 'unknown';
+  const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+  let probeResults;
+  try {
+    const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+    probeResults = await runProbes(
+      matrix,
+      adapter,
+      (done) => bar.update(done),
+      config.concurrency,
+    );
+  } finally {
+    bar.stop();
+    await probeWorkspace.cleanup();
+  }
 
   const activatedCount = probeResults.filter(r => r.transcript.activated).length;
   if (activatedCount > 0) {
@@ -219,7 +241,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
     probeResults = await judgeActivatedSessions(probeResults, skill, config, apiKey);
   }
 
-  const report = buildCoverageReport(skill.frontmatter.name ?? 'unknown', lintResult, probeResults);
+  const report = buildCoverageReport(skillName, lintResult, probeResults);
   console.log(renderCoverageReport(report));
 
   const scenariosPath = await exportScenarios(report, filePath);
@@ -227,7 +249,18 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   console.log(`Scenarios saved to ${scenariosPath}`);
   console.log(`Run 'tripwire test ${skillPath}' to rerun without reprobing`);
 
-  return { exitCode: lintExitCode(lintResult), scenariosPath };
+  await trackBehavioralRun(
+    'analyze',
+    agent,
+    report.infrastructureErrors.length > 0
+      ? 'infrastructure_error'
+      : coverageExitCode(report) === 1 ? 'behavior_failure' : 'pass',
+  );
+
+  return {
+    exitCode: lintExitCode(lintResult) || coverageExitCode(report) ? 1 : 0,
+    scenariosPath,
+  };
 }
 
 program
@@ -235,7 +268,7 @@ program
   .description('LLM probe → real agent sessions → coverage map')
   .option('--model <model>', 'Override probe model')
   .option('--judge-model <model>', 'Override judge model')
-  .option('--agent <name>', `Agent CLI to probe with: ${AGENTS.join(', ')}`, 'claude')
+  .option('--agent <name>', `Agent CLI to probe with: ${AGENTS.join(', ')} (defaults to tripwire.yaml)`)
   .action(async (skillPath: string, opts: AnalyzeOpts) => {
     const { exitCode } = await runAnalyze(skillPath, opts);
     process.exit(exitCode);
@@ -287,58 +320,118 @@ program
     console.log('');
     console.log(chalk.bold('Next step:'), `run 'tripwire analyze ${skillPath}' (or 'tripwire init ${skillPath} --analyze')`);
     console.log('to run a real activation probe and commit the resulting tripwire-scenarios.yaml —');
-    console.log('that file is what the Action reruns deterministically in CI.');
+    console.log('that file is the fixed behavioral contract the Action reruns in CI.');
     process.exit(lintExitCode(lintResult));
   });
 
 program
   .command('test <skill-path>')
-  .description('CI mode: rerun a fixed scenario set')
+  .description('Run one prompt or replay a committed scenario set')
   .option('--scenarios <file>', 'Override scenarios file path')
-  .option('--agent <name>', `Agent CLI to test against: ${AGENTS.join(', ')}`, 'claude')
-  .action(async (skillPath: string, opts: { scenarios?: string; agent?: string }) => {
-    const agent = opts.agent ?? 'claude';
-    assertValidAgent(agent);
-    warnIfUnverifiedAgent(agent);
-
+  .option('--prompt <text>', 'Run one prompt instead of a scenarios file')
+  .option('--expect <behavior>', 'Expected behavior for --prompt: activate or quiet')
+  .option('--agent <name>', `Agent CLI to test against: ${AGENTS.join(', ')} (defaults to tripwire.yaml)`)
+  .action(async (
+    skillPath: string,
+    opts: { scenarios?: string; prompt?: string; expect?: string; agent?: string },
+  ) => {
     const filePath = await resolveSkillFilePath(skillPath);
     const skill = await parseSkill(filePath);
+    const config = await loadConfig(dirname(filePath));
+    const agent = opts.agent ?? config.agent;
+    assertValidAgent(agent);
+    warnIfUnverifiedAgent(agent);
     const scenariosPath = opts.scenarios ?? join(dirname(filePath), 'tripwire-scenarios.yaml');
+    let inlineScenario;
+    if (opts.prompt !== undefined) {
+      if (opts.scenarios) {
+        console.error(chalk.red('Error: --prompt and --scenarios cannot be used together'));
+        process.exit(1);
+      }
+      try {
+        inlineScenario = buildInlineScenario(opts.prompt, opts.expect);
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    } else if (opts.expect !== undefined) {
+      console.error(chalk.red('Error: --expect can only be used with --prompt'));
+      process.exit(1);
+    }
 
-    console.log(chalk.bold(`Running scenarios from: ${scenariosPath}`));
+    console.log(
+      inlineScenario
+        ? chalk.bold('Running one behavioral scenario...')
+        : chalk.bold(`Running scenarios from: ${scenariosPath}`),
+    );
     const bar = new cliProgress.SingleBar({
       format: '  {bar} {value}/{total} complete',
       barCompleteChar: '█',
       barIncompleteChar: '░',
     });
 
-    const adapter = resolveAdapter(agent, skill.frontmatter.name ?? 'unknown');
+    const skillName = skill.frontmatter.name ?? 'unknown';
+    const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
     let knownTotal = 0;
     bar.start(1, 0);
 
-    const results = await runScenariosFromFile(scenariosPath, adapter, (done, total) => {
-      if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
-      bar.update(done);
-    });
-    bar.stop();
+    let results;
+    try {
+      const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+      if (inlineScenario) {
+        bar.setTotal(1);
+        results = [{
+          prompt: inlineScenario,
+          transcript: await adapter.run(inlineScenario.prompt),
+        }];
+        bar.update(1);
+      } else {
+        results = await runScenariosFromFile(
+          scenariosPath,
+          adapter,
+          (done, total) => {
+            if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
+            bar.update(done);
+          },
+          config.concurrency,
+        );
+      }
+    } finally {
+      bar.stop();
+      await probeWorkspace.cleanup();
+    }
 
     const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
     const lintResult = lint(skill, ruleConfig, customRules);
-    const report = buildCoverageReport(skill.frontmatter.name ?? 'unknown', lintResult, results);
+    const report = buildCoverageReport(skillName, lintResult, results);
+    console.log(formatLintResult(skill.frontmatter.name ?? filePath, lintResult));
+    console.log('');
     console.log(renderCoverageReport(report));
+    if (inlineScenario) {
+      console.log('');
+      console.log(chalk.dim(
+        `Keep this case in ${join(dirname(filePath), 'tripwire-scenarios.yaml')}, `
+        + 'or run `tripwire analyze` to generate a broader contract.',
+      ));
+    }
 
-    const failures = report.gaps.length + report.falsePositives.length;
-    process.exit(failures > 0 ? 1 : 0);
+    const exitCode = lintExitCode(lintResult) === 1 || coverageExitCode(report) === 1 ? 1 : 0;
+    await trackBehavioralRun(
+      'test',
+      agent,
+      report.infrastructureErrors.length > 0
+        ? 'infrastructure_error'
+        : exitCode === 1 ? 'behavior_failure' : 'pass',
+    );
+    process.exit(exitCode);
   });
 
 program
   .command('test-all <skills-dir>')
   .description('Rerun committed scenarios for every skill in a directory — the model-drift check for a scheduled CI run')
-  .option('--agent <name>', `Agent CLI to test against: ${AGENTS.join(', ')}`, 'claude')
+  .option('--agent <name>', `Agent CLI to test against: ${AGENTS.join(', ')} (overrides each tripwire.yaml)`)
   .action(async (skillsDir: string, opts: { agent?: string }) => {
-    const agent = opts.agent ?? 'claude';
-    assertValidAgent(agent);
-    warnIfUnverifiedAgent(agent);
+    if (opts.agent) assertValidAgent(opts.agent);
 
     const files = await discoverSkillFiles(skillsDir);
     if (files.length === 0) {
@@ -358,13 +451,35 @@ program
 
       const skill = await parseSkill(filePath);
       const skillName = skill.frontmatter.name ?? filePath;
-      const adapter = resolveAdapter(agent, skillName);
+      const config = await loadConfig(dirname(filePath));
+      const agent = opts.agent ?? config.agent;
+      assertValidAgent(agent);
+      warnIfUnverifiedAgent(agent);
       console.log(chalk.bold(`Testing ${skillName}...`));
-      const results = await runScenariosFromFile(scenariosPath, adapter, () => {});
+      const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+      let results;
+      try {
+        const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+        results = await runScenariosFromFile(
+          scenariosPath,
+          adapter,
+          () => {},
+          config.concurrency,
+        );
+      } finally {
+        await probeWorkspace.cleanup();
+      }
       const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
       const lintResult = lint(skill, ruleConfig, customRules);
       const report = buildCoverageReport(skillName, lintResult, results);
-      checked.push({ skillName, filePath, gaps: report.gaps.length, falsePositives: report.falsePositives.length });
+      checked.push({
+        skillName,
+        filePath,
+        gaps: report.gaps.length,
+        falsePositives: report.falsePositives.length,
+        infrastructureErrors: report.infrastructureErrors.length,
+        lintErrors: report.lintResult.errors.length,
+      });
     }
 
     const summary = summarizeDrift(checked, skipped);
@@ -375,6 +490,14 @@ program
       await writeFile(process.env.GITHUB_STEP_SUMMARY, `## Tripwire drift check\n\n${renderDriftSummary(summary)}\n`, { flag: 'a' });
     }
 
+    if (checked.length > 0) {
+      const hasInfrastructureError = checked.some((result) => (result.infrastructureErrors ?? 0) > 0);
+      await trackBehavioralRun(
+        'test-all',
+        opts.agent ?? 'mixed',
+        hasInfrastructureError ? 'infrastructure_error' : summary.hasDrift ? 'behavior_failure' : 'pass',
+      );
+    }
     process.exit(summary.hasDrift ? 1 : 0);
   });
 
@@ -382,15 +505,15 @@ program
   .command('eval <skill-path>')
   .description('Run outcome-quality evals: author-written assertions + an optional rubric judge — did it *work*, not just did it fire')
   .option('--evals <file>', 'Override evals file path (default: tripwire-evals.yaml next to the skill)')
-  .option('--agent <name>', `Agent CLI to eval against: ${AGENTS.join(', ')}`, 'claude')
+  .option('--agent <name>', `Agent CLI to eval against: ${AGENTS.join(', ')} (defaults to tripwire.yaml)`)
   .option('--judge-model <model>', 'Override judge model for rubric-graded cases')
   .action(async (skillPath: string, opts: { evals?: string; agent?: string; judgeModel?: string }) => {
-    const agent = opts.agent ?? 'claude';
-    assertValidAgent(agent);
-    warnIfUnverifiedAgent(agent);
-
     const filePath = await resolveSkillFilePath(skillPath);
     const skill = await parseSkill(filePath);
+    const config = await loadConfig(dirname(filePath));
+    const agent = opts.agent ?? config.agent;
+    assertValidAgent(agent);
+    warnIfUnverifiedAgent(agent);
     const evalsPath = opts.evals ?? join(dirname(filePath), 'tripwire-evals.yaml');
 
     if (!existsSync(evalsPath)) {
@@ -406,7 +529,6 @@ program
     }
 
     const skillName = skill.frontmatter.name ?? filePath;
-    const adapter = resolveAdapter(agent, skillName);
     console.log(chalk.bold(`Running evals from: ${evalsPath}`));
     const bar = new cliProgress.SingleBar({
       format: '  {bar} {value}/{total} complete',
@@ -416,11 +538,23 @@ program
     let knownTotal = 0;
     bar.start(1, 0);
 
-    const results = await runEvalsFromFile(evalsPath, adapter, { apiKey, judgeModel: opts.judgeModel }, (done, total) => {
-      if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
-      bar.update(done);
-    });
-    bar.stop();
+    const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+    let results;
+    try {
+      const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+      results = await runEvalsFromFile(
+        evalsPath,
+        adapter,
+        { apiKey, judgeModel: opts.judgeModel },
+        (done, total) => {
+          if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
+          bar.update(done);
+        },
+      );
+    } finally {
+      bar.stop();
+      await probeWorkspace.cleanup();
+    }
 
     console.log('');
     console.log(renderEvalReport(skillName, results));

@@ -10,7 +10,7 @@ jobs:
       contents: read
       pull-requests: write   # for the summary comment
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0       # needed to diff the PR
       - uses: bharath31/tripwire@v1
@@ -28,8 +28,8 @@ jobs:
   drift:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: Rerun committed scenarios against the live model

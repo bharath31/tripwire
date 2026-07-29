@@ -12,7 +12,11 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
 var __commonJS = (cb, mod) => function __require2() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -4017,8 +4021,8 @@ var require_cross_spawn = __commonJS({
 });
 
 // src/action/main.ts
-import { dirname, join as join3, basename } from "node:path";
-import { existsSync } from "node:fs";
+import { dirname as dirname5, join as join5, basename as basename2 } from "node:path";
+import { existsSync as existsSync2 } from "node:fs";
 import { readFileSync as readFileSync3 } from "node:fs";
 
 // src/skill-parser.ts
@@ -4161,7 +4165,7 @@ function lint(skill, ruleConfig, extraRules = []) {
 
 // src/lint/config.ts
 import { readFile as readFile2 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname as dirname2 } from "node:path";
 
 // node_modules/js-yaml/dist/js-yaml.mjs
 function getDefaultExportFromCjs(x) {
@@ -7257,15 +7261,36 @@ async function loadCustomRules(filePath, baseDir = process.cwd()) {
   return rules;
 }
 
+// src/config-path.ts
+import { access } from "node:fs/promises";
+import { dirname, join, resolve as resolve2 } from "node:path";
+async function findTripwireConfig(startDir) {
+  let current = resolve2(startDir);
+  while (true) {
+    const candidate = join(current, "tripwire.yaml");
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+    }
+    const parent = dirname(current);
+    if (parent === current) return void 0;
+    current = parent;
+  }
+}
+
 // src/lint/config.ts
 async function loadLintConfig(cwd = process.cwd()) {
-  let raw;
-  try {
-    const text = await readFile2(join(cwd, "tripwire.yaml"), "utf-8");
-    raw = yaml2.load(text, { schema: yaml2.DEFAULT_SCHEMA }) ?? {};
-  } catch {
-    return { ruleConfig: {}, customRules: [] };
+  const configPath = await findTripwireConfig(cwd);
+  if (!configPath) return { ruleConfig: {}, customRules: [] };
+  const text = await readFile2(configPath, "utf-8");
+  const value = yaml2.load(text, { schema: yaml2.DEFAULT_SCHEMA });
+  if (value == null) return { ruleConfig: {}, customRules: [] };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid ${configPath}: expected a YAML mapping`);
   }
+  const raw = value;
+  const configDir = dirname2(configPath);
   const extendsNames = raw.extends ? Array.isArray(raw.extends) ? raw.extends : [raw.extends] : [];
   let ruleConfig = {};
   for (const name of extendsNames) {
@@ -7274,13 +7299,15 @@ async function loadLintConfig(cwd = process.cwd()) {
   ruleConfig = { ...ruleConfig, ...raw.rules ?? {} };
   const customRules = [];
   for (const pluginPath of raw.plugins ?? []) {
-    customRules.push(...await loadCustomRules(pluginPath, cwd));
+    customRules.push(...await loadCustomRules(pluginPath, configDir));
   }
   return { ruleConfig, customRules };
 }
 
 // src/action/changed-files.ts
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { basename, dirname as dirname3, join as join2 } from "node:path";
 function globToRegExp(pattern) {
   let re = "";
   for (let i2 = 0; i2 < pattern.length; i2++) {
@@ -7320,6 +7347,11 @@ function filterByPatterns(files, patterns) {
   }
   return out;
 }
+function skillFilesForChanges(files, patterns, fileExists = existsSync) {
+  const directSkills = filterByPatterns(files, patterns);
+  const scenarioSkills = files.filter((file) => basename(file) === "tripwire-scenarios.yaml").map((file) => join2(dirname3(file), "SKILL.md")).filter(fileExists);
+  return filterByPatterns([...directSkills, ...scenarioSkills], patterns);
+}
 function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
   const out = execFileSync(
     "git",
@@ -7327,7 +7359,7 @@ function getChangedSkillFiles(base, head, patterns, cwd = process.cwd()) {
     { cwd, encoding: "utf-8" }
   );
   const files = out.split("\n").map((f) => f.trim()).filter(Boolean);
-  return filterByPatterns(files, patterns);
+  return skillFilesForChanges(files, patterns, (file) => existsSync(join2(cwd, file)));
 }
 
 // src/action/locate.ts
@@ -7388,24 +7420,76 @@ function emitAnnotations(file, raw, result, log = console.log) {
   }
 }
 
-// src/action/probe.ts
-import { mkdir, copyFile } from "node:fs/promises";
-import { join as join2, resolve as resolve2 } from "node:path";
-
 // src/test/scenario-runner.ts
 import { readFile as readFile3 } from "node:fs/promises";
-async function runScenariosFromFile(scenariosPath, adapter, onProgress) {
-  const raw = await readFile3(scenariosPath, "utf-8");
-  const file = yaml2.load(raw, { schema: yaml2.DEFAULT_SCHEMA });
-  const results = [];
-  const total = file.scenarios.length;
-  for (let i2 = 0; i2 < total; i2++) {
-    const s = file.scenarios[i2];
-    const transcript = await adapter.run(s.prompt);
-    results.push({ prompt: { zone: s.zone, prompt: s.prompt }, transcript });
-    onProgress(i2 + 1, total);
+
+// src/concurrency.ts
+async function mapConcurrent(items, concurrency, worker, onProgress = () => {
+}) {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error(`concurrency must be a positive integer, got ${concurrency}`);
   }
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let completed = 0;
+  const runWorker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+      completed++;
+      onProgress(completed, items.length);
+    }
+  };
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker()
+  );
+  await Promise.all(workers);
   return results;
+}
+
+// src/test/scenario-runner.ts
+var ZONES = /* @__PURE__ */ new Set(["core", "adjacent", "negative", "variants"]);
+function parseScenarios(raw) {
+  const loaded = yaml2.load(raw, { schema: yaml2.DEFAULT_SCHEMA });
+  if (!loaded || typeof loaded !== "object" || !Array.isArray(loaded.scenarios)) {
+    throw new Error("Invalid scenarios file: expected a top-level `scenarios` array");
+  }
+  return loaded.scenarios.map((value, index) => {
+    if (!value || typeof value !== "object") {
+      throw new Error(`Invalid scenario at index ${index}: expected an object`);
+    }
+    const candidate = value;
+    if (typeof candidate.prompt !== "string" || candidate.prompt.trim() === "") {
+      throw new Error(`Invalid scenario at index ${index}: \`prompt\` must be a non-empty string`);
+    }
+    if (typeof candidate.zone !== "string" || !ZONES.has(candidate.zone)) {
+      throw new Error(`Invalid scenario at index ${index}: unknown \`zone\` "${String(candidate.zone)}"`);
+    }
+    const expectedActivation = typeof candidate.expectedActivation === "boolean" ? candidate.expectedActivation : candidate.zone !== "negative";
+    return {
+      prompt: candidate.prompt,
+      zone: candidate.zone,
+      expectedActivation
+    };
+  });
+}
+async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3) {
+  const raw = await readFile3(scenariosPath, "utf-8");
+  const scenarios = parseScenarios(raw);
+  return mapConcurrent(scenarios, concurrency, async (s) => {
+    const transcript = await adapter.run(s.prompt);
+    return {
+      prompt: {
+        zone: s.zone,
+        prompt: s.prompt,
+        expectedActivation: s.expectedActivation
+      },
+      transcript
+    };
+  }, onProgress);
 }
 
 // node_modules/is-plain-obj/index.js
@@ -14234,84 +14318,127 @@ function skillMatches(fired, target) {
 }
 
 // src/adapters/claude-code.ts
+function claudeFailureReason(output) {
+  const lines = output.split(/\r?\n/).filter(Boolean).reverse();
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "result" && event.is_error && typeof event.result === "string") {
+        return event.result.slice(0, 300);
+      }
+      if (typeof event.error === "string") return event.error.slice(0, 300);
+    } catch {
+    }
+  }
+  return void 0;
+}
 var ClaudeCodeAdapter = class {
-  constructor(skillName) {
+  constructor(skillName, options2 = {}) {
     this.skillName = skillName;
+    this.options = options2;
   }
   skillName;
+  options;
   async run(prompt) {
     try {
       const result = await execa(
         "claude",
-        ["-p", prompt, "--output-format", "stream-json", "--verbose"],
+        [
+          "-p",
+          prompt,
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "3",
+          "--permission-mode",
+          "plan"
+        ],
         {
+          cwd: this.options.cwd,
           timeout: 12e4,
           reject: false,
           all: true
         }
       );
       const output = result.all ?? result.stdout + "\n" + result.stderr;
+      if (result.exitCode !== 0) {
+        const reason = claudeFailureReason(output);
+        return {
+          activated: false,
+          rawOutput: output,
+          error: `Claude Code exited with code ${result.exitCode ?? "unknown"}${reason ? `: ${reason}` : ""}`
+        };
+      }
       return parseTranscript(output, this.skillName);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { activated: false, rawOutput: `[adapter error] ${msg}` };
+      return { activated: false, rawOutput: `[adapter error] ${msg}`, error: msg };
     }
   }
 };
 
-// src/action/context.ts
-function readContext(env, readEventFile) {
-  const eventPath = env.GITHUB_EVENT_PATH;
-  let base = env.GITHUB_BASE_REF || "";
-  let head = env.GITHUB_HEAD_REF || env.GITHUB_SHA || "HEAD";
-  let prNumber = null;
-  if (eventPath) {
-    try {
-      const event = JSON.parse(readEventFile(eventPath));
-      if (event.pull_request) {
-        base = event.pull_request.base?.sha || base;
-        head = event.pull_request.head?.sha || head;
-        prNumber = event.pull_request.number ?? null;
-      } else if (event.before && event.after) {
-        base = event.before;
-        head = event.after;
-      }
-    } catch {
-    }
-  }
-  return {
-    base,
-    head,
-    repo: env.GITHUB_REPOSITORY || "",
-    prNumber,
-    token: env.GITHUB_TOKEN || ""
-  };
+// src/expectation.ts
+function expectedActivationFor(prompt) {
+  return typeof prompt.expectedActivation === "boolean" ? prompt.expectedActivation : prompt.zone !== "negative";
 }
+
+// src/probe-workspace.ts
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { join as join3 } from "node:path";
+import { tmpdir } from "node:os";
+var AGENT_SKILL_ROOTS = {
+  claude: [".claude", "skills"],
+  gemini: [".gemini", "skills"],
+  codex: [".agents", "skills"]
+};
 function safeSkillName(name) {
   return name.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^\.+/, "") || "skill";
+}
+async function createProbeWorkspace(agent, skillFilePath, skillName) {
+  const rootParts = AGENT_SKILL_ROOTS[agent];
+  if (!rootParts) {
+    throw new Error(`Cannot stage skill for unknown agent "${agent}"`);
+  }
+  const cwd = await mkdtemp(join3(tmpdir(), "tripwire-probe-"));
+  const skillDir = join3(cwd, ...rootParts, safeSkillName(skillName));
+  const skillPath = join3(skillDir, "SKILL.md");
+  await mkdir(skillDir, { recursive: true });
+  await copyFile(skillFilePath, skillPath);
+  return {
+    cwd,
+    skillPath,
+    cleanup: () => rm(cwd, { recursive: true, force: true })
+  };
 }
 
 // src/action/probe.ts
 async function probeSkill(input2) {
-  await stageSkill(input2.skillFilePath, input2.skillName, input2.workspace);
-  const factory = input2.adapterFactory ?? ((name) => new ClaudeCodeAdapter(name));
-  const adapter = factory(input2.skillName);
-  const results = await runScenariosFromFile(input2.scenariosPath, adapter, () => {
-  });
-  const regressions = classifyRegressions(results);
-  return { skillName: input2.skillName, results, regressions };
-}
-async function stageSkill(skillFilePath, skillName, workspace) {
-  const safe = safeSkillName(skillName);
-  const target = join2(workspace, ".claude", "skills", safe, "SKILL.md");
-  if (resolve2(target) === resolve2(skillFilePath)) return;
-  await mkdir(join2(workspace, ".claude", "skills", safe), { recursive: true });
-  await copyFile(skillFilePath, target);
+  const workspace = await createProbeWorkspace("claude", input2.skillFilePath, input2.skillName);
+  try {
+    const factory = input2.adapterFactory ?? ((name, cwd) => new ClaudeCodeAdapter(name, { cwd }));
+    const adapter = factory(input2.skillName, workspace.cwd);
+    const results = await runScenariosFromFile(input2.scenariosPath, adapter, () => {
+    });
+    const regressions = classifyRegressions(results);
+    return { skillName: input2.skillName, results, regressions };
+  } finally {
+    await workspace.cleanup();
+  }
 }
 function classifyRegressions(results) {
   const out = [];
   for (const r of results) {
-    const expected = r.prompt.zone !== "negative";
+    if (r.transcript.error) {
+      out.push({
+        prompt: r.prompt.prompt,
+        zone: r.prompt.zone,
+        kind: "infrastructure",
+        error: r.transcript.error
+      });
+      continue;
+    }
+    const expected = expectedActivationFor(r.prompt);
     const activated = r.transcript.activated;
     if (expected && !activated) {
       out.push({ prompt: r.prompt.prompt, zone: r.prompt.zone, kind: "gap" });
@@ -14400,7 +14527,7 @@ function renderComment(reports) {
         lines.push(`- \u2705 coverage: ${r.probe.results.length} scenario(s), no regressions`);
       } else {
         for (const reg of r.probe.regressions) {
-          const label = reg.kind === "gap" ? "gap (did not activate)" : "false positive (activated)";
+          const label = reg.kind === "gap" ? "gap (did not activate)" : reg.kind === "false-positive" ? "false positive (activated)" : `infrastructure error${reg.error ? ` (${reg.error})` : ""}`;
           lines.push(`- \u274C coverage ${label} [${reg.zone}]: "${reg.prompt}"`);
         }
       }
@@ -14417,6 +14544,218 @@ function computeExitCode(reports, failOnWarning) {
     if (r.probe && r.probe.regressions.length > 0) return 1;
   }
   return 0;
+}
+
+// src/action/context.ts
+function readContext(env, readEventFile) {
+  const eventPath = env.GITHUB_EVENT_PATH;
+  let base = env.GITHUB_BASE_REF || "";
+  let head = env.GITHUB_HEAD_REF || env.GITHUB_SHA || "HEAD";
+  let prNumber = null;
+  if (eventPath) {
+    try {
+      const event = JSON.parse(readEventFile(eventPath));
+      if (event.pull_request) {
+        base = event.pull_request.base?.sha || base;
+        head = event.pull_request.head?.sha || head;
+        prNumber = event.pull_request.number ?? null;
+      } else if (event.before && event.after) {
+        base = event.before;
+        head = event.after;
+      }
+    } catch {
+    }
+  }
+  return {
+    base,
+    head,
+    repo: env.GITHUB_REPOSITORY || "",
+    prNumber,
+    token: env.GITHUB_TOKEN || ""
+  };
+}
+
+// src/telemetry.ts
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir as mkdir2, readFile as readFile4, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname as dirname4, join as join4 } from "node:path";
+
+// package.json
+var package_default = {
+  name: "tripwire-skills",
+  version: "0.1.2",
+  description: "Behavioral regression tests for Agent Skills. Catch missed activations and false triggers before release.",
+  type: "module",
+  license: "MIT",
+  engines: {
+    node: ">=20"
+  },
+  homepage: "https://tripwire.bharath.sh",
+  repository: {
+    type: "git",
+    url: "git+https://github.com/bharath31/tripwire.git"
+  },
+  bugs: {
+    url: "https://github.com/bharath31/tripwire/issues"
+  },
+  keywords: [
+    "agent-skills",
+    "claude",
+    "claude-code",
+    "skill",
+    "skill-md",
+    "skill.md",
+    "linter",
+    "lint",
+    "ci",
+    "github-action",
+    "ai-agents",
+    "agent-experience",
+    "mcp",
+    "codex",
+    "gemini-cli",
+    "activation-testing",
+    "prompt-testing"
+  ],
+  bin: {
+    tripwire: "dist/cli.js"
+  },
+  files: [
+    "dist"
+  ],
+  scripts: {
+    build: "tsup",
+    dev: "tsup --watch",
+    typecheck: "tsc --noEmit",
+    pretest: "npm run build",
+    test: "vitest run",
+    "test:watch": "vitest",
+    "build:web": "esbuild web/src/engine.ts --bundle --format=esm --outfile=web/engine.js --minify",
+    "build:action": `esbuild src/action/main.ts --bundle --platform=node --target=node20 --format=esm --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" --outfile=action-dist/index.js`,
+    "verify:action": "npm run build:action && git diff --exit-code -- action-dist/index.js",
+    prepublishOnly: "npm run build"
+  },
+  dependencies: {
+    "@anthropic-ai/sdk": "^0.55.0",
+    chalk: "^5.3.0",
+    "cli-progress": "^3.12.0",
+    "cli-table3": "^0.6.3",
+    commander: "^12.0.0",
+    execa: "^9.0.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0"
+  },
+  devDependencies: {
+    "@types/cli-progress": "^3.11.5",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.0.0",
+    tsup: "^8.0.0",
+    tsx: "^4.23.0",
+    typescript: "^5.4.0",
+    vitest: "^4.1.10",
+    "workers-og": "^0.0.27"
+  },
+  overrides: {
+    esbuild: "0.28.1"
+  }
+};
+
+// src/telemetry.ts
+var DEFAULT_ENDPOINT = "https://tripwire.bharath.sh/api/events";
+function telemetryDisabled(env = process.env) {
+  return env.DO_NOT_TRACK === "1" || env.TRIPWIRE_TELEMETRY === "0" || env.TRIPWIRE_TELEMETRY_DISABLED === "1";
+}
+function hashIdentity(value) {
+  return createHash("sha256").update(`tripwire-v1:${value}`).digest("hex").slice(0, 32);
+}
+function statePath(env, homeDir) {
+  const configRoot = env.XDG_CONFIG_HOME || join4(homeDir, ".config");
+  return join4(configRoot, "tripwire", "telemetry.json");
+}
+async function localIdentity(env, homeDir) {
+  const path6 = statePath(env, homeDir);
+  let state;
+  try {
+    const parsed = JSON.parse(await readFile4(path6, "utf-8"));
+    if (typeof parsed.installationId === "string" && parsed.installationId.length > 10) {
+      state = {
+        installationId: parsed.installationId,
+        noticeShown: parsed.noticeShown === true
+      };
+    }
+  } catch {
+  }
+  state ??= { installationId: randomUUID(), noticeShown: false };
+  await mkdir2(dirname4(path6), { recursive: true });
+  await writeFile(path6, JSON.stringify(state, null, 2) + "\n", { mode: 384 });
+  return {
+    id: hashIdentity(state.installationId),
+    noticeShown: state.noticeShown,
+    markNoticeShown: async () => {
+      if (state.noticeShown) return;
+      state.noticeShown = true;
+      await writeFile(path6, JSON.stringify(state, null, 2) + "\n", { mode: 384 });
+    }
+  };
+}
+async function buildTelemetryPayload(command, agent, outcome, options2 = {}) {
+  const env = options2.env ?? process.env;
+  const githubRepositoryId = env.GITHUB_REPOSITORY_ID;
+  const source = env.GITHUB_ACTIONS === "true" ? "github_action" : "cli";
+  if (githubRepositoryId) {
+    return {
+      payload: {
+        event: "behavioral_run_completed",
+        installation_id: hashIdentity(`github:${githubRepositoryId}`),
+        command,
+        agent,
+        outcome,
+        source,
+        version: package_default.version
+      },
+      noticeShown: true,
+      markNoticeShown: async () => {
+      }
+    };
+  }
+  const identity3 = await localIdentity(env, options2.homeDir ?? homedir());
+  return {
+    payload: {
+      event: "behavioral_run_completed",
+      installation_id: identity3.id,
+      command,
+      agent,
+      outcome,
+      source,
+      version: package_default.version
+    },
+    noticeShown: identity3.noticeShown,
+    markNoticeShown: identity3.markNoticeShown
+  };
+}
+async function trackBehavioralRun(command, agent, outcome, options2 = {}) {
+  const env = options2.env ?? process.env;
+  if (telemetryDisabled(env)) return;
+  try {
+    const event = await buildTelemetryPayload(command, agent, outcome, options2);
+    if (!event.noticeShown) {
+      (options2.log ?? console.log)(
+        "tripwire: anonymous usage telemetry is enabled; no prompts, paths, skill names, or credentials are collected. Disable with TRIPWIRE_TELEMETRY=0."
+      );
+      await event.markNoticeShown();
+    }
+    await (options2.fetchImpl ?? fetch)(options2.endpoint ?? DEFAULT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": `tripwire/${package_default.version}`
+      },
+      body: JSON.stringify(event.payload),
+      signal: AbortSignal.timeout(800)
+    });
+  } catch {
+  }
 }
 
 // src/action/main.ts
@@ -14439,11 +14778,11 @@ async function main() {
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const reports = [];
   for (const rel of changed) {
-    const file = join3(cwd, rel);
+    const file = join5(cwd, rel);
     const raw = readFileSync3(file, "utf-8");
     const skill = await parseSkill(file);
-    const skillName = skill.frontmatter.name ?? basename(dirname(file));
-    const { ruleConfig, customRules } = await loadLintConfig(dirname(file));
+    const skillName = skill.frontmatter.name ?? basename2(dirname5(file));
+    const { ruleConfig, customRules } = await loadLintConfig(dirname5(file));
     const lintResult = lint(skill, ruleConfig, customRules);
     emitAnnotations(rel, raw, lintResult);
     const report = { skillName, file: rel, lint: lintResult };
@@ -14453,8 +14792,8 @@ async function main() {
         report.probeSkipped = reason;
         console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
       } else {
-        const scenariosPath = join3(dirname(file), "tripwire-scenarios.yaml");
-        if (!existsSync(scenariosPath)) {
+        const scenariosPath = join5(dirname5(file), "tripwire-scenarios.yaml");
+        if (!existsSync2(scenariosPath)) {
           const reason = "no tripwire-scenarios.yaml (run `tripwire analyze` locally and commit it)";
           report.probeSkipped = reason;
           console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
@@ -14462,11 +14801,11 @@ async function main() {
           report.probe = await probeSkill({
             skillFilePath: file,
             skillName,
-            scenariosPath,
-            workspace: cwd
+            scenariosPath
           });
           for (const reg of report.probe.regressions) {
-            const msg = escapeMessage(`coverage ${reg.kind} [${reg.zone}]: "${reg.prompt}"`);
+            const detail = reg.kind === "infrastructure" && reg.error ? ` \u2014 ${reg.error}` : "";
+            const msg = escapeMessage(`coverage ${reg.kind} [${reg.zone}]: "${reg.prompt}"${detail}`);
             console.log(`::error file=${rel}::${msg}`);
           }
         }
@@ -14482,6 +14821,15 @@ async function main() {
       body: renderComment(reports)
     });
     console.log(`::notice::tripwire: comment ${result}`);
+  }
+  const probed = reports.filter((report) => report.probe);
+  if (probed.length > 0) {
+    const regressions = probed.flatMap((report) => report.probe?.regressions ?? []);
+    await trackBehavioralRun(
+      "action",
+      "claude",
+      regressions.some((regression) => regression.kind === "infrastructure") ? "infrastructure_error" : regressions.length > 0 ? "behavior_failure" : "pass"
+    );
   }
   const code = computeExitCode(reports, bool2("fail-on-warning"));
   process.exit(code);

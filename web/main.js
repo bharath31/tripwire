@@ -60,14 +60,14 @@ function render(result) {
   const parts = [];
 
   if (errors.length === 0 && warnings.length === 0) {
-    parts.push(`<div class="verdict pass"><span>✓</span> No issues found — this skill passes every rule.</div>`);
+    parts.push(`<div class="verdict pass"><span>✓</span> No issues found. This skill passes every rule.</div>`);
   } else if (errors.length > 0) {
     const e = `${errors.length} error${errors.length > 1 ? 's' : ''}`;
     const w = warnings.length > 0 ? `, ${warnings.length} warning${warnings.length > 1 ? 's' : ''}` : '';
-    parts.push(`<div class="verdict fail"><span>✗</span> ${e}${w} — CI would fail on this skill.</div>`);
+    parts.push(`<div class="verdict fail"><span>✗</span> ${e}${w}. CI would fail on this skill.</div>`);
   } else {
     const w = `${warnings.length} warning${warnings.length > 1 ? 's' : ''}`;
-    parts.push(`<div class="verdict warn"><span>⚠</span> ${w} — passes CI, but worth a look.</div>`);
+    parts.push(`<div class="verdict warn"><span>⚠</span> ${w}. Passes CI, but worth a look.</div>`);
   }
 
   for (const f of [...errors, ...warnings]) {

@@ -3,7 +3,8 @@ import type { ParsedSkill } from '../../src/types.js';
 import { defaultConfig } from '../../src/config.js';
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () {
+    return {
     messages: {
       create: vi.fn().mockResolvedValue({
         content: [{
@@ -17,7 +18,8 @@ vi.mock('@anthropic-ai/sdk', () => ({
         }],
       }),
     },
-  })),
+    };
+  }),
 }));
 
 describe('generateProbeMatrix', () => {
@@ -54,6 +56,14 @@ describe('generateProbeMatrix', () => {
     expect(count('variants')).toBe(defaultConfig.probe_count.variants);
   });
 
+  it('assigns an explicit activation expectation to every generated prompt', async () => {
+    const { generateProbeMatrix } = await import('../../src/analyze/probe-generator.js');
+    const matrix = await generateProbeMatrix(skill, defaultConfig, 'fake-key');
+    expect(matrix.prompts.every((p) => typeof p.expectedActivation === 'boolean')).toBe(true);
+    expect(matrix.prompts.filter((p) => p.zone === 'negative').every((p) => p.expectedActivation === false)).toBe(true);
+    expect(matrix.prompts.filter((p) => p.zone !== 'negative').every((p) => p.expectedActivation === true)).toBe(true);
+  });
+
   it('uses the configured model for the API call', async () => {
     const AnthropicMock = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
     const instanceMock = AnthropicMock.mock.results[0]?.value;
@@ -64,7 +74,8 @@ describe('generateProbeMatrix', () => {
 
   it('strips markdown fences before parsing the JSON', async () => {
     const AnthropicMock = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    AnthropicMock.mockImplementationOnce(() => ({
+    AnthropicMock.mockImplementationOnce(function () {
+      return {
       messages: {
         create: vi.fn().mockResolvedValue({
           content: [{
@@ -75,7 +86,8 @@ describe('generateProbeMatrix', () => {
           }],
         }),
       },
-    }));
+      };
+    });
     const { generateProbeMatrix } = await import('../../src/analyze/probe-generator.js');
     const matrix = await generateProbeMatrix(skill, defaultConfig, 'fake-key');
     expect(matrix.prompts.some(p => p.zone === 'core' && p.prompt === 'c')).toBe(true);
@@ -83,11 +95,13 @@ describe('generateProbeMatrix', () => {
 
   it('throws a clear error when the model returns non-JSON', async () => {
     const AnthropicMock = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    AnthropicMock.mockImplementationOnce(() => ({
+    AnthropicMock.mockImplementationOnce(function () {
+      return {
       messages: {
         create: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'sorry, no JSON here' }] }),
       },
-    }));
+      };
+    });
     const { generateProbeMatrix } = await import('../../src/analyze/probe-generator.js');
     await expect(generateProbeMatrix(skill, defaultConfig, 'fake-key')).rejects.toThrow(
       'did not return valid JSON',
