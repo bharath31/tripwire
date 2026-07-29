@@ -49,7 +49,16 @@ Start with the free static check:
 tripwire lint ./skills/code-review
 ```
 
-Generate and run an activation matrix:
+Run one real activation check with your existing agent CLI login:
+
+```bash
+tripwire test ./skills/code-review \
+  --prompt "review this pull request for security problems" \
+  --expect activate
+```
+
+This path does not need a separate prompt-generation API key. Once it works, generate and run a
+broader activation matrix:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -190,6 +199,7 @@ Please report vulnerabilities privately using the process in [SECURITY.md](./SEC
 | `tripwire lint [path]` | Lint one skill or every skill under a directory | None |
 | `tripwire lint [path] --fix` | Apply mechanically safe fixes | None |
 | `tripwire analyze <skill>` | Generate prompts and run a real activation matrix | Yes |
+| `tripwire test <skill> --prompt ... --expect ...` | Check one prompt without a scenario file | Yes |
 | `tripwire test <skill>` | Replay a committed scenario file | Yes |
 | `tripwire test-all <dir>` | Replay scenarios for a whole skill library | Yes |
 | `tripwire conflicts <dir>` | Find duplicate names and description overlap | None |
@@ -250,7 +260,7 @@ npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 322 tests across the CLI, Action, adapters, lint engine, evals,
+The test suite currently contains 326 tests across the CLI, Action, adapters, lint engine, evals,
 drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
 browser bundle, audit production dependencies, verify the published package contents, and check the
 committed Action bundle.

@@ -150,9 +150,9 @@ Running 4 committed scenarios...
 
     <section class="quickstart section" id="quickstart">
       <div class="section-heading">
-        <p class="eyebrow">first useful result in three commands</p>
-        <h2>Test one skill locally.</h2>
-        <p>Static lint is free. Behavioral analysis uses your installed agent and your model credentials.</p>
+        <p class="eyebrow">first behavioral result in three commands</p>
+        <h2>Test one real prompt locally.</h2>
+        <p>Use your existing agent login for a one-prompt activation check. Generate the broader matrix when the basic path works.</p>
       </div>
       <div class="command-stack">
         <div class="command">
@@ -164,11 +164,11 @@ Running 4 committed scenarios...
           <button class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
         </div>
         <div class="command command-accent">
-          <code><span>$</span> tripwire analyze ./skills/my-skill</code>
-          <button class="copy-btn" data-copy="tripwire analyze ./skills/my-skill" aria-label="Copy analyze command">Copy</button>
+          <code><span>$</span> tripwire test ./skills/my-skill --prompt "your real user prompt" --expect activate</code>
+          <button class="copy-btn" data-copy="tripwire test ./skills/my-skill --prompt &quot;your real user prompt&quot; --expect activate" aria-label="Copy behavioral test command">Copy</button>
         </div>
       </div>
-      <p class="quickstart-note">Tripwire has no hosted repository backend. <code>analyze</code> sends the skill to Anthropic to generate probes, then runs them through your selected local agent CLI.</p>
+      <p class="quickstart-note">The one-prompt check does not need a Tripwire account or a separate generation key. <code>analyze</code> can then generate a larger positive and negative scenario matrix.</p>
     </section>
 
     <section class="ci section" id="ci">

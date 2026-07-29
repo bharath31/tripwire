@@ -26,11 +26,12 @@ Every launch asset points to the same workflow:
 ```bash
 npm install -g tripwire-skills
 tripwire lint ./skills/my-skill
-tripwire analyze ./skills/my-skill
+tripwire test ./skills/my-skill --prompt "your real user prompt" --expect activate
 ```
 
-The activation milestone is a generated `tripwire-scenarios.yaml`. The retained-use milestone is a
-second behavioral run within seven days, ideally from the GitHub Action.
+The first activation milestone is a valid one-prompt behavioral result. The adoption milestone is a
+generated or authored `tripwire-scenarios.yaml`. The retained-use milestone is a second behavioral
+run within seven days, ideally from the GitHub Action.
 
 ## Launch sequence
 
@@ -39,7 +40,7 @@ second behavioral run within seven days, ideally from the GitHub Action.
 1. Merge the release PR.
 2. Publish npm `0.1.2`.
 3. Move the GitHub Action `v1` tag to the release commit.
-4. Add the `PRODUCT_ANALYTICS` Analytics Engine binding and redeploy the site.
+4. Confirm the source-controlled `PRODUCT_ANALYTICS` Analytics Engine binding is active after the site deploy.
 5. Verify npm install, the two-prompt Claude canary, the Action on a fixture PR, and the DAU event.
 6. Publish the announcement below on GitHub, X, LinkedIn, Hacker News, and relevant skill-developer
    communities.

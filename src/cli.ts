@@ -24,6 +24,7 @@ import { ClaudeCodeAdapter } from './adapters/claude-code.js';
 import { GeminiCliAdapter } from './adapters/gemini-cli.js';
 import { CodexCliAdapter } from './adapters/codex-cli.js';
 import { runScenariosFromFile } from './test/scenario-runner.js';
+import { buildInlineScenario } from './test/inline-scenario.js';
 import { summarizeDrift, renderDriftSummary } from './test/drift.js';
 import type { SkillDriftResult, SkippedSkill } from './test/drift.js';
 import { findRepoRoot, scaffoldWorkflow, scaffoldDriftWorkflow } from './init/scaffold.js';
@@ -320,10 +321,15 @@ program
 
 program
   .command('test <skill-path>')
-  .description('CI mode: rerun a fixed scenario set')
+  .description('Run one prompt or replay a committed scenario set')
   .option('--scenarios <file>', 'Override scenarios file path')
+  .option('--prompt <text>', 'Run one prompt instead of a scenarios file')
+  .option('--expect <behavior>', 'Expected behavior for --prompt: activate or quiet')
   .option('--agent <name>', `Agent CLI to test against: ${AGENTS.join(', ')} (defaults to tripwire.yaml)`)
-  .action(async (skillPath: string, opts: { scenarios?: string; agent?: string }) => {
+  .action(async (
+    skillPath: string,
+    opts: { scenarios?: string; prompt?: string; expect?: string; agent?: string },
+  ) => {
     const filePath = await resolveSkillFilePath(skillPath);
     const skill = await parseSkill(filePath);
     const config = await loadConfig(dirname(filePath));
@@ -331,8 +337,28 @@ program
     assertValidAgent(agent);
     warnIfUnverifiedAgent(agent);
     const scenariosPath = opts.scenarios ?? join(dirname(filePath), 'tripwire-scenarios.yaml');
+    let inlineScenario;
+    if (opts.prompt !== undefined) {
+      if (opts.scenarios) {
+        console.error(chalk.red('Error: --prompt and --scenarios cannot be used together'));
+        process.exit(1);
+      }
+      try {
+        inlineScenario = buildInlineScenario(opts.prompt, opts.expect);
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    } else if (opts.expect !== undefined) {
+      console.error(chalk.red('Error: --expect can only be used with --prompt'));
+      process.exit(1);
+    }
 
-    console.log(chalk.bold(`Running scenarios from: ${scenariosPath}`));
+    console.log(
+      inlineScenario
+        ? chalk.bold('Running one behavioral scenario...')
+        : chalk.bold(`Running scenarios from: ${scenariosPath}`),
+    );
     const bar = new cliProgress.SingleBar({
       format: '  {bar} {value}/{total} complete',
       barCompleteChar: '█',
@@ -347,10 +373,19 @@ program
     let results;
     try {
       const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-      results = await runScenariosFromFile(scenariosPath, adapter, (done, total) => {
-        if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
-        bar.update(done);
-      });
+      if (inlineScenario) {
+        bar.setTotal(1);
+        results = [{
+          prompt: inlineScenario,
+          transcript: await adapter.run(inlineScenario.prompt),
+        }];
+        bar.update(1);
+      } else {
+        results = await runScenariosFromFile(scenariosPath, adapter, (done, total) => {
+          if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
+          bar.update(done);
+        });
+      }
     } finally {
       bar.stop();
       await probeWorkspace.cleanup();
@@ -360,6 +395,13 @@ program
     const lintResult = lint(skill, ruleConfig, customRules);
     const report = buildCoverageReport(skillName, lintResult, results);
     console.log(renderCoverageReport(report));
+    if (inlineScenario) {
+      console.log('');
+      console.log(chalk.dim(
+        `Keep this case in ${join(dirname(filePath), 'tripwire-scenarios.yaml')}, `
+        + 'or run `tripwire analyze` to generate a broader contract.',
+      ));
+    }
 
     const exitCode = coverageExitCode(report);
     await trackBehavioralRun(

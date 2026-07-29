@@ -16,6 +16,7 @@ All notable changes to Tripwire are documented here.
 ### Product experience
 
 - Rebuilt the landing page around the silent activation-regression use case.
+- Added a one-prompt behavioral test path that works with an existing agent CLI login.
 - Added a production workflow, safety model, maturity statement, MIT license, and security policy.
 - Added anonymous, documented behavioral DAU measurement with standard opt-out controls.
 - Upgraded the test toolchain and removed all reported npm dependency advisories.
@@ -23,7 +24,7 @@ All notable changes to Tripwire are documented here.
 ### Verification
 
 - Added CI across Node.js 20 and 22.
-- Expanded the suite to 322 tests.
+- Expanded the suite to 326 tests.
 - Added committed Action-bundle verification and npm package-content checks.
 
 ## 0.1.1

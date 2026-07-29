@@ -13,6 +13,7 @@ on:
       - "src/**" # the Pages Functions bundle src/lint + src/engine
       - "package.json"
       - "package-lock.json"
+      - "wrangler.jsonc"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
@@ -40,7 +41,7 @@ jobs:
         run: npm run build:web
       - name: Publish to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
-        run: npx --yes wrangler@4 pages deploy web --project-name=tripwire --branch=main
+        run: npx --yes wrangler@4 pages deploy --branch=main
       - name: Note missing token
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
         run: echo "::warning::Set the CLOUDFLARE_API_TOKEN repo secret to enable auto-deploy."

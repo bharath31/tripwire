@@ -34,14 +34,13 @@ credentials. Local identity state lives at `$XDG_CONFIG_HOME/tripwire/telemetry.
 
 ## Cloudflare setup
 
-The Pages project needs one Analytics Engine binding:
+[`wrangler.jsonc`](../wrangler.jsonc) declares the Pages project and its Analytics Engine binding:
 
 - Variable name: `PRODUCT_ANALYTICS`
 - Dataset: `tripwire_product_events`
 
-The endpoint still returns `204` if the binding is absent, so telemetry never blocks the CLI. Add the
-binding in the Cloudflare dashboard under Workers & Pages, Tripwire, Settings, Bindings, Analytics
-Engine, then redeploy.
+The dataset is created automatically on its first write. The endpoint still returns `204` if the
+binding is absent, so telemetry never blocks the CLI.
 
 Example DAU query:
 
