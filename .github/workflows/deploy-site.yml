@@ -43,6 +43,22 @@ jobs:
       - name: Publish to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: npx --yes wrangler@4 pages deploy --branch=main
+      - name: Notify participating search engines
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --silent --show-error --retry 2 \
+            --request POST https://api.indexnow.org/indexnow \
+            --header "content-type: application/json" \
+            --data '{
+              "host": "tripwire.bharath.sh",
+              "key": "d8eaba7a6b727e84404d69e217d122d6",
+              "keyLocation": "https://tripwire.bharath.sh/d8eaba7a6b727e84404d69e217d122d6.txt",
+              "urlList": [
+                "https://tripwire.bharath.sh/",
+                "https://tripwire.bharath.sh/pricing.md"
+              ]
+            }'
       - name: Note missing token
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
         run: echo "::warning::Set the CLOUDFLARE_API_TOKEN repo secret to enable auto-deploy."
