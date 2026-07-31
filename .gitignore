@@ -20,6 +20,11 @@ web/engine.js
 # Internal design docs (specs + plans) — not for the public repo
 docs/superpowers/
 
+# Internal operating plans, marketing context, and agent workspace scratch
+LAUNCH.md
+.agents/
+.context/
+
 # Corpus-scan working data — third-party SKILL.md files fetched for the "State of
 # Agent Skills" scan; not ours to redistribute, and regenerable via fetch.ts
 scripts/corpus-scan/corpus/
