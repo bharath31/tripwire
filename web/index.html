@@ -61,14 +61,6 @@
           "mainEntity": [
             {
               "@type": "Question",
-              "name": "What does Tripwire test?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Tripwire tests whether a real agent activates a specific Agent Skill for prompts that should match and stays quiet for prompts that should not. It compares structured activation signals with explicit expectations and turns those cases into regression scenarios for local and CI runs."
-              }
-            },
-            {
-              "@type": "Question",
               "name": "How is Tripwire different from a SKILL.md linter?",
               "acceptedAnswer": {
                 "@type": "Answer",
@@ -81,22 +73,6 @@
               "acceptedAnswer": {
                 "@type": "Answer",
                 "text": "Tripwire does not send skill files, prompts, file paths, repository names, model output, usernames, or credentials to its servers. Probes run locally or on your GitHub runner through your configured agent provider. Anonymous behavioral telemetry can be disabled with TRIPWIRE_TELEMETRY=0."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Which agents does Tripwire support?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "The Claude Code adapter is live-verified and recommended for production gates. Codex CLI and Gemini CLI adapters are available as experimental checks with their confidence level reported explicitly."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How much does Tripwire cost?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Tripwire is free, MIT-licensed open-source software. Static lint is free to run. Behavioral probes use your existing agent login or provider credentials, so any model usage is billed by your provider rather than Tripwire."
               }
             }
           ]
@@ -115,10 +91,8 @@
     </a>
     <nav class="nav-links" aria-label="Main navigation">
       <a href="#problem">Why Tripwire</a>
-      <a href="#how">How it works</a>
+      <a href="#try-it">Try it</a>
       <a href="#ci">CI</a>
-      <a href="#faq">FAQ</a>
-      <a href="#playground">Lint playground</a>
       <a class="nav-github" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">GitHub ↗</a>
     </nav>
   </header>
@@ -133,7 +107,7 @@
           agent sessions, records what activates, and fails CI when that behavior changes.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#quickstart">Test your first skill</a>
+          <a class="btn btn-primary" href="#try-it">Try it now</a>
           <a class="btn btn-ghost" href="#failed-run">See a failed run</a>
         </div>
         <div class="trust-row" role="group" aria-label="Product facts">
@@ -169,6 +143,11 @@ Running 4 committed scenarios...
           The agent reads a skill’s name and description before deciding whether to load it. A clean
           file proves the syntax works. It does not prove the agent will choose the skill.
         </p>
+        <p class="why-note">
+          Tripwire does not ask an LLM whether your description “looks good.” The Claude adapter reads
+          the structured <code>Skill</code> tool event from a real session and matches the skill that
+          fired. Gemini and Codex adapters are available as experimental checks.
+        </p>
       </div>
       <div class="failure-grid">
         <article class="failure-card">
@@ -184,83 +163,59 @@ Running 4 committed scenarios...
       </div>
     </section>
 
-    <section class="how section" id="how">
+    <section class="try-it section" id="try-it">
       <div class="section-heading">
-        <p class="eyebrow">from guesswork to a testable contract</p>
-        <h2>Test the behavior. Commit the evidence.</h2>
+        <p class="eyebrow">try it now</p>
+        <h2>Lint in your browser, then run it for real.</h2>
+        <p>No install needed for the static check. When you're ready, copy three commands and probe a real prompt.</p>
       </div>
-      <ol class="steps">
-        <li>
-          <span class="step-number">01</span>
-          <div>
-            <code>tripwire analyze</code>
-            <h3>Probe the skill with real prompts</h3>
-            <p>Tripwire generates core, edge, negative, and paraphrased prompts, then runs the selected agent in an isolated read-only workspace.</p>
-          </div>
-        </li>
-        <li>
-          <span class="step-number">02</span>
-          <div>
-            <code>tripwire-scenarios.yaml</code>
-            <h3>Review the expected behavior</h3>
-            <p>Each prompt carries an explicit should-activate or should-stay-quiet expectation. Edit the contract, then commit it beside the skill.</p>
-          </div>
-        </li>
-        <li>
-          <span class="step-number">03</span>
-          <div>
-            <code>tripwire test</code>
-            <h3>Block the regression in CI</h3>
-            <p>Replay the same scenario set on every skill change. Tripwire separates behavioral failures from agent timeouts and authentication errors.</p>
-          </div>
-        </li>
-      </ol>
-    </section>
 
-    <section class="evidence section">
-      <div class="evidence-copy">
-        <p class="eyebrow">a real activation signal</p>
-        <h2>Tripwire watches the agent load your skill.</h2>
-        <p>
-          It does not ask an LLM whether your description “looks good.” The Claude adapter reads the
-          structured <code>Skill</code> tool event from a real session and matches the skill that fired.
-        </p>
-        <p class="evidence-note">Gemini and Codex adapters are available as experimental checks. Their confidence level is reported instead of hidden.</p>
-      </div>
-      <pre class="event"><span class="t-dim">{</span>
-  "type": "tool_use",
-  "name": <span class="t-accent">"Skill"</span>,
-  "input": {
-    "skill": <span class="t-accent">"code-review"</span>
-  }
-<span class="t-dim">}</span>
+      <div class="try-playground">
+        <h3 class="try-step">1. Lint it in your browser</h3>
+        <p class="try-step-note">This checks file structure and authoring rules. The activation test runs from the CLI because it needs a real agent session.</p>
 
-<span class="t-ok">observed: activated</span>
-<span class="t-ok">expected: activated</span>
-<strong>verdict: pass</strong></pre>
-    </section>
-
-    <section class="quickstart section" id="quickstart">
-      <div class="section-heading">
-        <p class="eyebrow">first behavioral result in three commands</p>
-        <h2>Test one real prompt locally.</h2>
-        <p>Use your existing agent login for a one-prompt activation check. Generate the broader matrix when the basic path works.</p>
-      </div>
-      <div class="command-stack">
-        <div class="command">
-          <code><span>$</span> npm install -g tripwire-skills</code>
-          <button type="button" class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
+        <div class="examples">
+          <span>Load an example:</span>
+          <button type="button" class="chip" data-example="good">Well-formed skill</button>
+          <button type="button" class="chip" data-example="bad">Skill with problems</button>
         </div>
-        <div class="command">
-          <code><span>$</span> tripwire lint ./skills/my-skill</code>
-          <button type="button" class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
+
+        <div class="pg-grid">
+          <div class="pg-pane">
+            <div class="pane-label">SKILL.md</div>
+            <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
+          </div>
+          <div class="pg-pane">
+            <div class="pane-label">Lint result</div>
+            <div id="pg-output" class="pg-output"></div>
+          </div>
         </div>
-        <div class="command command-accent">
-          <code><span>$</span> tripwire test ./skills/my-skill --prompt "your real user prompt" --expect activate</code>
-          <button type="button" class="copy-btn" data-copy="tripwire test ./skills/my-skill --prompt &quot;your real user prompt&quot; --expect activate" aria-label="Copy behavioral test command">Copy</button>
+
+        <div class="share-row">
+          <button type="button" class="copy-btn" id="pg-share-link">Copy shareable link</button>
+          <a class="copy-btn" id="pg-share-card" href="#" target="_blank" rel="noopener">Open share card image</a>
+          <span id="pg-share-status" class="share-status" aria-live="polite"></span>
         </div>
       </div>
-      <p class="quickstart-note">The one-prompt check does not need a Tripwire account or a separate generation key. <code>analyze</code> can then generate a larger positive and negative scenario matrix.</p>
+
+      <div class="try-cli">
+        <h3 class="try-step">2. Then run it for real</h3>
+        <div class="command-stack">
+          <div class="command">
+            <code><span>$</span> npm install -g tripwire-skills</code>
+            <button type="button" class="copy-btn" data-copy="npm install -g tripwire-skills" aria-label="Copy install command">Copy</button>
+          </div>
+          <div class="command">
+            <code><span>$</span> tripwire lint ./skills/my-skill</code>
+            <button type="button" class="copy-btn" data-copy="tripwire lint ./skills/my-skill" aria-label="Copy lint command">Copy</button>
+          </div>
+          <div class="command command-accent">
+            <code><span>$</span> tripwire test ./skills/my-skill --prompt "your real user prompt" --expect activate</code>
+            <button type="button" class="copy-btn" data-copy="tripwire test ./skills/my-skill --prompt &quot;your real user prompt&quot; --expect activate" aria-label="Copy behavioral test command">Copy</button>
+          </div>
+        </div>
+        <p class="quickstart-note">The one-prompt check does not need a Tripwire account or a separate generation key. Once activation works, <code>analyze</code> generates a scenario matrix you commit and replay in CI. See the <a href="https://github.com/bharath31/tripwire#the-production-workflow">full workflow</a> in the README.</p>
+      </div>
     </section>
 
     <section class="ci section" id="ci">
@@ -292,42 +247,12 @@ Running 4 committed scenarios...
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}</pre>
     </section>
 
-    <section class="fit section">
-      <div class="fit-card fit-yes">
-        <p class="eyebrow">use tripwire when</p>
-        <h2>Other people depend on your skill.</h2>
-        <p>You publish a skill, maintain a shared library, review skill contributions, or need to know whether an agent update changed routing behavior.</p>
-      </div>
-      <div class="fit-card">
-        <p class="eyebrow">you can skip it when</p>
-        <h2>The skill is personal and low-stakes.</h2>
-        <p>If you are the only user, normal use will expose most activation problems. Tripwire earns its place when a silent failure reaches someone else.</p>
-      </div>
-    </section>
-
-    <section class="more section">
-      <div class="section-heading compact">
-        <p class="eyebrow">after activation works</p>
-        <h2>Cover the rest of the skill lifecycle.</h2>
-      </div>
-      <div class="more-grid">
-        <div><code>conflicts</code><span>Find skills competing for the same intent.</span></div>
-        <div><code>test-all</code><span>Recheck a whole skill library for model drift.</span></div>
-        <div><code>eval</code><span>Assert what the skill does after it activates.</span></div>
-        <div><code>--agent</code><span>Run experimental Gemini and Codex checks.</span></div>
-      </div>
-    </section>
-
     <section class="faq section" id="faq">
       <div class="section-heading">
         <p class="eyebrow">production questions</p>
         <h2>What skill developers need to know.</h2>
       </div>
       <div class="faq-list">
-        <article>
-          <h3>What does Tripwire test?</h3>
-          <p>Tripwire tests whether a real agent activates a specific Agent Skill for prompts that should match and stays quiet for prompts that should not. It compares structured activation signals with explicit expectations and turns those cases into regression scenarios for local and CI runs.</p>
-        </article>
         <article>
           <h3>How is Tripwire different from a SKILL.md linter?</h3>
           <p>A linter checks file structure and authoring rules. Tripwire also runs the skill through a real agent and observes whether it activates. That behavioral check catches valid-looking descriptions that miss intended prompts or trigger for unrelated requests.</p>
@@ -336,45 +261,6 @@ Running 4 committed scenarios...
           <h3>Does Tripwire upload my skill or prompts?</h3>
           <p>Tripwire does not send skill files, prompts, file paths, repository names, model output, usernames, or credentials to its servers. Probes run locally or on your GitHub runner through your configured agent provider. Anonymous behavioral telemetry can be disabled with <code>TRIPWIRE_TELEMETRY=0</code>.</p>
         </article>
-        <article>
-          <h3>Which agents does Tripwire support?</h3>
-          <p>The Claude Code adapter is live-verified and recommended for production gates. Codex CLI and Gemini CLI adapters are available as experimental checks with their confidence level reported explicitly.</p>
-        </article>
-        <article>
-          <h3>How much does Tripwire cost?</h3>
-          <p>Tripwire is free, MIT-licensed open-source software. Static lint is free to run. Behavioral probes use your existing agent login or provider credentials, so any model usage is billed by your provider rather than Tripwire.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="playground section" id="playground">
-      <div class="playground-head">
-        <p class="eyebrow">free static check</p>
-        <h2>Lint a SKILL.md in your browser.</h2>
-        <p>This checks file structure and authoring rules. The differentiated activation test runs from the CLI because it needs a real agent session.</p>
-      </div>
-
-      <div class="examples">
-        <span>Load an example:</span>
-        <button type="button" class="chip" data-example="good">Well-formed skill</button>
-        <button type="button" class="chip" data-example="bad">Skill with problems</button>
-      </div>
-
-      <div class="pg-grid">
-        <div class="pg-pane">
-          <div class="pane-label">SKILL.md</div>
-          <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
-        </div>
-        <div class="pg-pane">
-          <div class="pane-label">Lint result</div>
-          <div id="pg-output" class="pg-output"></div>
-        </div>
-      </div>
-
-      <div class="share-row">
-        <button type="button" class="copy-btn" id="pg-share-link">Copy shareable link</button>
-        <a class="copy-btn" id="pg-share-card" href="#" target="_blank" rel="noopener">Open share card image</a>
-        <span id="pg-share-status" class="share-status" aria-live="polite"></span>
       </div>
     </section>
 
@@ -382,7 +268,7 @@ Running 4 committed scenarios...
       <p class="eyebrow">ship the behavior you intended</p>
       <h2>Give your next skill change a real activation test.</h2>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#quickstart">Test your first skill</a>
+        <a class="btn btn-primary" href="#try-it">Try it now</a>
         <a class="btn btn-ghost" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">Read the source</a>
       </div>
     </section>

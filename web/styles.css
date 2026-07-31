@@ -464,6 +464,22 @@ pre {
   max-width: 480px;
 }
 
+.why-note {
+  margin-top: 20px;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.why-note code {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85em;
+}
+
 /* How */
 .how {
   border-top: 1px solid var(--border);
@@ -548,6 +564,42 @@ pre {
   max-width: 100%;
   padding: 28px;
   border-radius: var(--radius);
+}
+
+/* Try it */
+.try-it {
+  border-top: 1px solid var(--border);
+}
+
+.try-step {
+  margin-bottom: 14px;
+  font-size: 1.15rem;
+}
+
+.try-step-note {
+  margin-bottom: 22px;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.try-playground {
+  margin-top: 42px;
+}
+
+.try-cli {
+  margin-top: 56px;
+  padding-top: 48px;
+  border-top: 1px solid var(--border);
+}
+
+.quickstart-note a {
+  color: var(--accent-bright);
+  text-decoration: none;
+}
+
+.quickstart-note a:hover {
+  text-decoration: underline;
 }
 
 /* Quickstart */
