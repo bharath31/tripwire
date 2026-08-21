@@ -73,8 +73,8 @@ export function renderDriftSummary(summary: DriftSummary): string {
 
   if (summary.skipped.length > 0) {
     lines.push('');
-    lines.push(`Skipped ${summary.skipped.length} skill(s) with no committed tripwire-scenarios.yaml:`);
-    for (const s of summary.skipped) lines.push(`  - ${s.filePath}`);
+    lines.push(`Skipped ${summary.skipped.length} skill(s):`);
+    for (const s of summary.skipped) lines.push(`  - ${s.filePath} (${s.reason})`);
   }
 
   return lines.join('\n');

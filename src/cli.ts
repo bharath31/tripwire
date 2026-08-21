@@ -33,9 +33,10 @@ import { runEvalsFromFile } from './eval/eval-runner.js';
 import { renderEvalReport, evalExitCode } from './eval/reporter.js';
 import { createProbeWorkspace } from './probe-workspace.js';
 import { trackBehavioralRun } from './telemetry.js';
+import { describeApiError } from './analyze/api-errors.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import type { AgentAdapter } from './types.js';
+import type { AgentAdapter, ParsedSkill } from './types.js';
 
 const AGENTS = ['claude', 'gemini', 'codex'] as const;
 type AgentName = typeof AGENTS[number];
@@ -173,21 +174,58 @@ program
       process.exit(1);
     }
 
-    const files = await discoverSkillFiles(skillsDir);
+    let files: string[];
+    try {
+      files = await discoverSkillFiles(skillsDir);
+    } catch (err) {
+      console.error(chalk.red(`Error: cannot scan ${skillsDir}: ${err instanceof Error ? err.message : String(err)}`));
+      process.exit(1);
+    }
     if (files.length === 0) {
       console.log(chalk.dim(`No SKILL.md files found under ${skillsDir}`));
       return;
     }
 
-    const skills = await Promise.all(files.map((f) => parseSkill(f)));
+    // One unparseable skill must not kill the whole scan — report it and
+    // keep checking the rest (the usual case is a repo with many skills
+    // where one is mid-edit).
+    const skills: ParsedSkill[] = [];
+    const parseFailures: { filePath: string; reason: string }[] = [];
+    for (const f of files) {
+      try {
+        skills.push(await parseSkill(f));
+      } catch (err) {
+        parseFailures.push({ filePath: f, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    for (const failure of parseFailures) {
+      console.log(`  ${chalk.red('✗')} could not parse ${failure.filePath} — skipped (${failure.reason})`);
+    }
+    if (parseFailures.length > 0) console.log('');
+
+    if (skills.length === 0) {
+      console.error(chalk.red(`Error: no parseable SKILL.md found under ${skillsDir} (${parseFailures.length} failed to parse)`));
+      process.exit(1);
+    }
+
     const report = detectConflicts(skills, threshold);
     console.log(formatConflictReport(skills.length, report));
-    process.exit(conflictExitCode(report));
+    process.exit(conflictExitCode(report) === 1 || parseFailures.length > 0 ? 1 : 0);
   });
 
 interface AnalyzeOpts { model?: string; judgeModel?: string; agent?: string }
 
 const warnedUnverifiedAgents = new Set<string>();
+
+async function runAnthropicStep<T>(step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    console.error(chalk.red(`Error: ${describeApiError(err)}`));
+    process.exit(1);
+  }
+}
 
 function warnIfUnverifiedAgent(agent: string): void {
   if ((agent === 'gemini' || agent === 'codex') && !warnedUnverifiedAgents.has(agent)) {
@@ -223,7 +261,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   console.log('');
 
   console.log(chalk.bold('Generating probe matrix...'));
-  const matrix = await generateProbeMatrix(skill, config, apiKey);
+  const matrix = await runAnthropicStep(() => generateProbeMatrix(skill, config, apiKey));
   console.log(`Generated ${matrix.prompts.length} scenarios across 4 zones`);
   console.log('');
 
@@ -254,7 +292,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   const activatedCount = probeResults.filter(r => r.transcript.activated).length;
   if (activatedCount > 0) {
     console.log(chalk.bold(`\nJudging ${activatedCount} activated session(s)...`));
-    probeResults = await judgeActivatedSessions(probeResults, skill, config, apiKey);
+    probeResults = await runAnthropicStep(() => judgeActivatedSessions(probeResults, skill, config, apiKey));
   }
 
   const report = buildCoverageReport(skillName, lintResult, probeResults);
@@ -473,27 +511,41 @@ program
         continue;
       }
 
-      const skill = await parseSkill(filePath);
-      const skillName = skill.frontmatter.name ?? filePath;
       const config = await loadConfig(dirname(filePath));
       const agent = opts.agent ?? config.agent;
       assertValidAgent(agent);
       assertAgentInstalled(agent);
       warnIfUnverifiedAgent(agent);
-      console.log(chalk.bold(`Testing ${skillName}...`));
-      const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+
+      // One broken skill (unparseable frontmatter, malformed scenarios YAML)
+      // must not abort the whole drift run — skip it with the reason and
+      // keep checking the rest.
+      let skill: ParsedSkill;
+      let skillName: string;
       let results;
       try {
-        const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-        results = await runScenariosFromFile(
-          scenariosPath,
-          adapter,
-          () => {},
-          config.concurrency,
-        );
-      } finally {
-        await probeWorkspace.cleanup();
+        skill = await parseSkill(filePath);
+        skillName = skill.frontmatter.name ?? filePath;
+        console.log(chalk.bold(`Testing ${skillName}...`));
+        const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+        try {
+          const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+          results = await runScenariosFromFile(
+            scenariosPath,
+            adapter,
+            () => {},
+            config.concurrency,
+          );
+        } finally {
+          await probeWorkspace.cleanup();
+        }
+      } catch (err) {
+        const reason = (err instanceof Error ? err.message : String(err)).replace(/\s*\n\s*/g, ' ').trim();
+        console.log(chalk.yellow(`⚠ Skipping ${filePath}: ${reason}`));
+        skipped.push({ filePath, reason });
+        continue;
       }
+
       const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
       const lintResult = lint(skill, ruleConfig, customRules);
       const report = buildCoverageReport(skillName, lintResult, results);
