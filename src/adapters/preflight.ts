@@ -13,10 +13,17 @@ export type PreflightAgent = keyof typeof AGENT_BINARIES;
 const WINDOWS_EXTS = ['.cmd', '.exe', '.bat'];
 
 /** Locate `bin` on the given PATH list without spawning a shell. */
-export function findBinaryOnPath(bin: string, pathList: string): string | null {
-  for (const dir of pathList.split(/[;:]/).filter(Boolean)) {
+export function findBinaryOnPath(
+  bin: string,
+  pathList: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  // Windows separates PATH entries with ';' — splitting on ':' would shred
+  // drive letters (C:\...). Unix uses ':'.
+  const sep = platform === 'win32' ? ';' : ':';
+  for (const dir of pathList.split(sep).filter(Boolean)) {
     if (existsSync(join(dir, bin))) return join(dir, bin);
-    if (process.platform === 'win32') {
+    if (platform === 'win32') {
       for (const ext of WINDOWS_EXTS) {
         const p = join(dir, bin + ext);
         if (existsSync(p)) return p;

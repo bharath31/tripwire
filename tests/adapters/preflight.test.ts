@@ -27,6 +27,30 @@ describe('findBinaryOnPath', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('does not split on ":" on win32 — drive letters must survive', async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), 'tripwire-pf-'));
+    try {
+      await symlink(process.execPath, join(dir, 'claude.cmd'));
+      // A Windows PATH entry "C:\tools" contains ':' — splitting on it would
+      // produce "C" and "\tools", neither of which can hold the binary.
+      expect(findBinaryOnPath('claude.cmd', `C:\\tools;${dir}`, 'win32')).toBe(join(dir, 'claude.cmd'));
+      expect(findBinaryOnPath('claude.cmd', `C:\\tools:${dir}`, 'win32')).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('splits on ":" on posix', async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), 'tripwire-pf-'));
+    try {
+      await symlink(process.execPath, join(dir, 'claude'));
+      expect(findBinaryOnPath('claude', `${dir}:/elsewhere`, 'linux')).toBe(join(dir, 'claude'));
+      expect(findBinaryOnPath('claude', `${dir};/elsewhere`, 'linux')).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('assertAgentBinaryAvailable', () => {
