@@ -92,6 +92,17 @@ describe('conflicts resilience (integration)', () => {
     const result = await execa('node', [CLI, 'conflicts', root], { reject: false });
     expect(result.exitCode).toBe(0);
   });
+
+  it('fails when any skill is unparseable even if the readable ones are conflict-free', async () => {
+    const root = tmp();
+    await writeSkill(root, 'alpha', GOOD_SKILL);
+    await writeSkill(root, 'gamma', GOOD_SKILL.replace('name: alpha', 'name: gamma'));
+    await writeSkill(root, 'broken', '---\nname: [unclosed\n---\nbody\n');
+
+    const result = await execa('node', [CLI, 'conflicts', root], { reject: false });
+    expect(result.stdout).toContain('could not parse');
+    expect(result.exitCode).toBe(1);
+  });
 });
 
 describe('test-all resilience (integration)', () => {

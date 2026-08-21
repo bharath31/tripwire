@@ -36,7 +36,7 @@ import { trackBehavioralRun } from './telemetry.js';
 import { describeApiError } from './analyze/api-errors.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import type { AgentAdapter, ParsedSkill } from './types.js';
+import type { AgentAdapter, ParsedSkill, ProbeResult } from './types.js';
 
 const AGENTS = ['claude', 'gemini', 'codex'] as const;
 type AgentName = typeof AGENTS[number];
@@ -211,7 +211,10 @@ program
 
     const report = detectConflicts(skills, threshold);
     console.log(formatConflictReport(skills.length, report));
-    process.exit(conflictExitCode(report) === 1 || parseFailures.length > 0 ? 1 : 0);
+    // Unparseable skills are themselves a finding: the scan was incomplete,
+    // so fail even when no conflicts were found among the readable ones.
+    const exit = conflictExitCode(report) === 1 || parseFailures.length > 0 ? 1 : 0;
+    process.exit(exit);
   });
 
 interface AnalyzeOpts { model?: string; judgeModel?: string; agent?: string }
@@ -275,7 +278,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
 
   const skillName = skill.frontmatter.name ?? 'unknown';
   const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
-  let probeResults;
+  let probeResults: ProbeResult[];
   try {
     const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
     probeResults = await runProbes(
@@ -540,6 +543,7 @@ program
           await probeWorkspace.cleanup();
         }
       } catch (err) {
+        // Compact multi-line validation errors so the summary stays readable.
         const reason = (err instanceof Error ? err.message : String(err)).replace(/\s*\n\s*/g, ' ').trim();
         console.log(chalk.yellow(`⚠ Skipping ${filePath}: ${reason}`));
         skipped.push({ filePath, reason });
