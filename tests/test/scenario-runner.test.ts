@@ -13,22 +13,23 @@ const mockAdapter: AgentAdapter = {
   }),
 };
 
+const baseFile: ScenariosFile = {
+  skillName: 'brainstorming',
+  generatedAt: '2026-06-27T00:00:00Z',
+  scenarios: [
+    { prompt: 'build a new feature', zone: 'core', expectedActivation: true },
+    { prompt: 'fix a bug', zone: 'negative', expectedActivation: false },
+  ],
+};
+
 describe('runScenariosFromFile', () => {
   let tmpDir: string;
   let scenariosPath: string;
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(os.tmpdir(), 'tripwire-sr-'));
-    const file: ScenariosFile = {
-      skillName: 'brainstorming',
-      generatedAt: '2026-06-27T00:00:00Z',
-      scenarios: [
-        { prompt: 'build a new feature', zone: 'core', expectedActivation: true },
-        { prompt: 'fix a bug', zone: 'negative', expectedActivation: false },
-      ],
-    };
     scenariosPath = join(tmpDir, 'tripwire-scenarios.yaml');
-    await writeFile(scenariosPath, yaml.dump(file), 'utf-8');
+    await writeFile(scenariosPath, yaml.dump(baseFile), 'utf-8');
   });
 
   afterEach(async () => { await rm(tmpDir, { recursive: true }); });
@@ -56,8 +57,9 @@ describe('runScenariosFromFile', () => {
     expect(calls).toEqual([[1, 2], [2, 2]]);
   });
 
-  it('throws ENOENT when file not found', async () => {
-    await expect(runScenariosFromFile('/no/file.yaml', mockAdapter, () => {})).rejects.toThrow('ENOENT');
+  it('throws a friendly error when file not found', async () => {
+    await expect(runScenariosFromFile('/no/file.yaml', mockAdapter, () => {})).rejects.toThrow(/no scenarios file found at \/no\/file\.yaml/);
+    await expect(runScenariosFromFile('/no/file.yaml', mockAdapter, () => {})).rejects.toThrow(/tripwire analyze/);
   });
 
   it('rejects malformed scenario files with a clear error', async () => {
@@ -66,5 +68,41 @@ describe('runScenariosFromFile', () => {
     await expect(runScenariosFromFile(malformed, mockAdapter, () => {})).rejects.toThrow(
       'expected a top-level `scenarios` array',
     );
+  });
+
+  it('wraps YAML parse errors with the file path', async () => {
+    const bad = join(tmpDir, 'bad.yaml');
+    await writeFile(bad, 'scenarios: [this is: not valid yaml\n', 'utf-8');
+    await expect(runScenariosFromFile(bad, mockAdapter, () => {})).rejects.toThrow(/invalid YAML in .*bad\.yaml/);
+  });
+
+  it('never runs agent sessions for an invalid scenarios file', async () => {
+    const bad = join(tmpDir, 'invalid.yaml');
+    await writeFile(bad, yaml.dump({ ...baseFile, scenarios: [{ prompt: 'hi', zone: 'negitive' }] }), 'utf-8');
+    const freshAdapter: AgentAdapter = { run: vi.fn() };
+    await expect(runScenariosFromFile(bad, freshAdapter, () => {})).rejects.toThrow(/scenario/i);
+    expect(freshAdapter.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing or empty skillName', async () => {
+    const noName = { generatedAt: '', scenarios: baseFile.scenarios };
+    const p = join(tmpDir, 'noname.yaml');
+    await writeFile(p, yaml.dump(noName), 'utf-8');
+    await expect(runScenariosFromFile(p, mockAdapter, () => {})).rejects.toThrow(/missing `skillName`/);
+
+    const empty = join(tmpDir, 'emptyname.yaml');
+    await writeFile(empty, yaml.dump({ ...baseFile, skillName: '' }), 'utf-8');
+    await expect(runScenariosFromFile(empty, mockAdapter, () => {})).rejects.toThrow(/missing `skillName`/);
+  });
+
+  it('rejects a file whose skillName does not match the skill under test', async () => {
+    const freshAdapter: AgentAdapter = { run: vi.fn() };
+    await expect(runScenariosFromFile(scenariosPath, freshAdapter, () => {}, 3, 'pricing-helper'))
+      .rejects.toThrow(/belongs to skill "brainstorming", but you are testing "pricing-helper"/);
+    expect(freshAdapter.run).not.toHaveBeenCalled();
+  });
+
+  it('accepts the matching skillName', async () => {
+    await expect(runScenariosFromFile(scenariosPath, mockAdapter, () => {}, 3, 'brainstorming')).resolves.toHaveLength(2);
   });
 });

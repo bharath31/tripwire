@@ -46,6 +46,12 @@ function assertValidAgent(agent: string): void {
   }
 }
 
+/** Print an error cleanly and exit 1 — never a raw stack trace. */
+function fail(err: unknown): never {
+  console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+  process.exit(1);
+}
+
 function resolveAdapter(agent: string, skillName: string, cwd?: string): AgentAdapter {
   switch (agent as AgentName) {
     case 'claude': return new ClaudeCodeAdapter(skillName, { cwd });
@@ -359,6 +365,12 @@ program
       process.exit(1);
     }
 
+    if (!inlineScenario && !existsSync(scenariosPath)) {
+      console.error(chalk.red(`Error: no scenarios file found at ${scenariosPath}`));
+      console.error(`Run ${chalk.bold(`tripwire analyze ${skillPath}`)} first to generate one, then commit tripwire-scenarios.yaml alongside the skill.`);
+      process.exit(1);
+    }
+
     console.log(
       inlineScenario
         ? chalk.bold('Running one behavioral scenario...')
@@ -394,6 +406,7 @@ program
             bar.update(done);
           },
           config.concurrency,
+          typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
         );
       }
     } finally {
@@ -562,8 +575,16 @@ program
   });
 
 // Bare `tripwire` in a repo with skills: lint them all — the 10-second first run.
-// No skills found → the usual help.
+// No skills found → the usual help. Anything that isn't a known command or flag
+// lands here too — reject it rather than silently linting (a typo'd `tripwire lnt`
+// must not look like success).
 program.action(async () => {
+  const operands: string[] = program.args ?? [];
+  if (operands.length > 0) {
+    console.error(chalk.red(`Error: unknown command "${operands[0]}"`));
+    console.error(chalk.dim(`Run 'tripwire --help' to see commands.`));
+    process.exit(1);
+  }
   const dir = findDefaultSkillsDir();
   if (!dir) {
     program.help();
@@ -573,4 +594,4 @@ program.action(async () => {
   await runLint(dir!, {});
 });
 
-program.parseAsync();
+program.parseAsync().catch(fail);

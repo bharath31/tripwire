@@ -134,8 +134,24 @@ describe('runEvalsFromFile', () => {
     expect(calls).toEqual([[1, 2], [2, 2]]);
   });
 
-  it('throws ENOENT when the file is not found', async () => {
+  it('throws a friendly error when the file is not found', async () => {
     const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
-    await expect(runEvalsFromFile('/no/file.yaml', stubAdapter(''), {}, () => {})).rejects.toThrow('ENOENT');
+    await expect(runEvalsFromFile('/no/file.yaml', stubAdapter(''), {}, () => {})).rejects.toThrow(/no evals file found at \/no\/file\.yaml/);
+  });
+
+  it('wraps YAML parse errors with the file path', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const bad = join(tmpDir, 'bad-evals.yaml');
+    await writeFile(bad, 'cases: [oops: nope\n', 'utf-8');
+    await expect(runEvalsFromFile(bad, stubAdapter(''), {}, () => {})).rejects.toThrow(/invalid YAML in .*bad-evals\.yaml/);
+  });
+
+  it('rejects cases missing a prompt before running any sessions', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const adapter = stubAdapter('hello world');
+    const bad = join(tmpDir, 'no-prompt.yaml');
+    await writeFile(bad, yaml.dump({ skillName: 'x', cases: [{ name: 'no prompt here' }] }), 'utf-8');
+    await expect(runEvalsFromFile(bad, adapter, {}, () => {})).rejects.toThrow(/"no prompt here": missing `prompt`/);
+    expect(adapter.run).not.toHaveBeenCalled();
   });
 });

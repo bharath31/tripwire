@@ -7,8 +7,46 @@ import { checkAssertions } from './assertions.js';
 import { judgeRubric } from './rubric-judge.js';
 
 export async function loadEvalsFile(path: string): Promise<EvalsFile> {
-  const raw = await readFile(path, 'utf-8');
-  return yaml.load(raw) as EvalsFile;
+  let raw: string;
+  try {
+    raw = await readFile(path, 'utf-8');
+  } catch {
+    throw new Error(`no evals file found at ${path} — author one (see the README for the tripwire-evals.yaml format)`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(raw);
+  } catch (err) {
+    throw new Error(`invalid YAML in ${path}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  validateEvalsFile(parsed);
+  return parsed;
+}
+
+export function validateEvalsFile(file: unknown): asserts file is EvalsFile {
+  if (typeof file !== 'object' || file === null || Array.isArray(file)) {
+    throw new Error('evals file must be a YAML object with `skillName` and `cases`');
+  }
+  const f = file as Partial<EvalsFile>;
+  if (!Array.isArray(f.cases) || f.cases.length === 0) {
+    throw new Error('evals file has no `cases` list — add at least one case with a `prompt`');
+  }
+  const problems: string[] = [];
+  f.cases.forEach((c, i) => {
+    const label = c && typeof c.name === 'string' && c.name.trim().length > 0 ? `"${c.name}"` : `case ${i + 1}`;
+    if (typeof c?.prompt !== 'string' || c.prompt.trim().length === 0) {
+      problems.push(`${label}: missing \`prompt\` (a non-empty string)`);
+    }
+    if (c?.assertions !== undefined && !Array.isArray(c.assertions)) {
+      problems.push(`${label}: \`assertions\` must be a list`);
+    }
+    if (c?.rubric !== undefined && (typeof c.rubric !== 'string' || c.rubric.trim().length === 0)) {
+      problems.push(`${label}: \`rubric\` must be a non-empty string`);
+    }
+  });
+  if (problems.length > 0) {
+    throw new Error(`invalid tripwire-evals.yaml:\n  - ${problems.join('\n  - ')}`);
+  }
 }
 
 export interface RunEvalsOptions {

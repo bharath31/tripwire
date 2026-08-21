@@ -14,7 +14,12 @@ export async function parseSkill(filePath: string): Promise<ParsedSkill> {
 }
 
 export async function resolveSkillFilePath(arg: string): Promise<string> {
-  const s = await stat(arg);
+  let s;
+  try {
+    s = await stat(arg);
+  } catch {
+    throw new Error(`No such file or directory: ${arg}`);
+  }
   if (!s.isDirectory()) return arg;
 
   for (const candidate of ['SKILL.md', 'skill.md']) {
