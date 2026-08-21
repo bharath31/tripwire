@@ -149,3 +149,30 @@ for (const btn of document.querySelectorAll('.copy-btn[data-copy]')) {
 const shared = readShareStateFromHash();
 input.value = shared !== null ? shared : EXAMPLES.bad;
 lintNow();
+
+const revealEls = document.querySelectorAll('[data-reveal]');
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      }
+    },
+    { threshold: 0.15 },
+  );
+  revealEls.forEach((el) => io.observe(el));
+} else {
+  revealEls.forEach((el) => el.classList.add('in'));
+}
+
+for (const el of document.querySelectorAll('[data-stars]')) {
+  fetch('https://api.github.com/repos/bharath31/tripwire')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (d && typeof d.stargazers_count === 'number') el.textContent = String(d.stargazers_count);
+    })
+    .catch(() => {});
+}
