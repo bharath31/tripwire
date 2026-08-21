@@ -3,7 +3,8 @@ import type { LintResult, ProbeResult, ProbeZone } from '../types.js';
 export interface Regression {
   prompt: string;
   zone: ProbeZone;
-  kind: 'gap' | 'false-positive';
+  kind: 'gap' | 'false-positive' | 'infrastructure';
+  error?: string;
 }
 
 export interface SkillProbeResult {

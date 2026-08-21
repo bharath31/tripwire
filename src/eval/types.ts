@@ -32,6 +32,7 @@ export interface EvalCaseResult {
   case: EvalCase;
   rawOutput: string;
   assertionResults: AssertionResult[];
+  infrastructureError?: string;
   rubricResult?: RubricResult;
   rubricSkipped?: string; // reason, e.g. "no ANTHROPIC_API_KEY"
   passed: boolean;

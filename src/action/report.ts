@@ -33,7 +33,11 @@ export function renderComment(reports: SkillReport[]): string {
         lines.push(`- ✅ coverage: ${r.probe.results.length} scenario(s), no regressions`);
       } else {
         for (const reg of r.probe.regressions) {
-          const label = reg.kind === 'gap' ? 'gap (did not activate)' : 'false positive (activated)';
+          const label = reg.kind === 'gap'
+            ? 'gap (did not activate)'
+            : reg.kind === 'false-positive'
+              ? 'false positive (activated)'
+              : `infrastructure error${reg.error ? ` (${reg.error})` : ''}`;
           lines.push(`- ❌ coverage ${label} [${reg.zone}]: "${reg.prompt}"`);
         }
       }

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ProbeResult, ParsedSkill, Config, JudgeResult } from '../types.js';
+import { mapConcurrent } from '../concurrency.js';
 
 const JUDGE_SYSTEM = `You are evaluating whether a Claude agent correctly followed a skill's instructions.
 Return ONLY valid JSON: {"score":<1-10>,"violations":["..."]}
@@ -36,11 +37,13 @@ export async function judgeActivatedSessions(
   apiKey: string,
 ): Promise<ProbeResult[]> {
   const client = new Anthropic({ apiKey });
-  return Promise.all(
-    results.map(async (r) => {
+  return mapConcurrent(
+    results,
+    config.concurrency,
+    async (r) => {
       if (!r.transcript.activated) return r;
       const judge = await scoreOne(r, skill, client, config.judge_model);
       return { ...r, judge };
-    }),
+    },
   );
 }

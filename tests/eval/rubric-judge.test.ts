@@ -1,13 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () {
+    return {
     messages: {
       create: vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: '{"passed":true,"reasoning":"asks a clarifying question"}' }],
       }),
     },
-  })),
+    };
+  }),
 }));
 
 describe('judgeRubric', () => {
@@ -21,9 +23,11 @@ describe('judgeRubric', () => {
 
   it('returns passed:false with an error reasoning when the response is not valid JSON', async () => {
     const Sdk = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    Sdk.mockImplementationOnce(() => ({
+    Sdk.mockImplementationOnce(function () {
+      return {
       messages: { create: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'not json' }] }) },
-    }));
+      };
+    });
     const { judgeRubric } = await import('../../src/eval/rubric-judge.js');
     const client = new Sdk({ apiKey: 'key' });
     const result = await judgeRubric('output', 'rubric', client, 'model');
@@ -33,9 +37,11 @@ describe('judgeRubric', () => {
 
   it('coerces a truthy non-boolean "passed" field to a real boolean', async () => {
     const Sdk = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    Sdk.mockImplementationOnce(() => ({
+    Sdk.mockImplementationOnce(function () {
+      return {
       messages: { create: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"passed":"yes","reasoning":"x"}' }] }) },
-    }));
+      };
+    });
     const { judgeRubric } = await import('../../src/eval/rubric-judge.js');
     const client = new Sdk({ apiKey: 'key' });
     const result = await judgeRubric('output', 'rubric', client, 'model');

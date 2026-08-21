@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname } from 'node:path';
 import yaml from 'js-yaml';
 import type { Rule } from './rule-types.js';
 import type { RuleConfig } from './registry.js';
 import { resolvePreset } from './presets.js';
 import { loadCustomRules } from './plugin-loader.js';
+import { findTripwireConfig } from '../config-path.js';
 
 export interface LintConfigFile {
   extends?: string | string[];
@@ -27,13 +28,17 @@ export interface ResolvedLintConfig {
  * behavior before this config existed.
  */
 export async function loadLintConfig(cwd: string = process.cwd()): Promise<ResolvedLintConfig> {
-  let raw: LintConfigFile;
-  try {
-    const text = await readFile(join(cwd, 'tripwire.yaml'), 'utf-8');
-    raw = (yaml.load(text, { schema: yaml.DEFAULT_SCHEMA }) as LintConfigFile) ?? {};
-  } catch {
-    return { ruleConfig: {}, customRules: [] };
+  const configPath = await findTripwireConfig(cwd);
+  if (!configPath) return { ruleConfig: {}, customRules: [] };
+
+  const text = await readFile(configPath, 'utf-8');
+  const value = yaml.load(text, { schema: yaml.DEFAULT_SCHEMA });
+  if (value == null) return { ruleConfig: {}, customRules: [] };
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Invalid ${configPath}: expected a YAML mapping`);
   }
+  const raw = value as LintConfigFile;
+  const configDir = dirname(configPath);
 
   const extendsNames = raw.extends ? (Array.isArray(raw.extends) ? raw.extends : [raw.extends]) : [];
   let ruleConfig: RuleConfig = {};
@@ -44,7 +49,7 @@ export async function loadLintConfig(cwd: string = process.cwd()): Promise<Resol
 
   const customRules: Rule[] = [];
   for (const pluginPath of raw.plugins ?? []) {
-    customRules.push(...(await loadCustomRules(pluginPath, cwd)));
+    customRules.push(...(await loadCustomRules(pluginPath, configDir)));
   }
 
   return { ruleConfig, customRules };

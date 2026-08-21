@@ -3,19 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tripwire — the quality gate for Agent Skills</title>
-  <meta name="description" content="Everything you need to ship Agent Skills that work: lint, real activation-coverage probing, conflict and model-drift detection, outcome evals, cross-agent checks, and a GitHub Action that gates every PR." />
-  <meta property="og:title" content="Tripwire" />
-  <meta property="og:description" content="The quality gate for Agent Skills: lint, activation coverage, and CI checks on every PR." />
-  <meta property="og:type" content="website" />
-  <meta property="og:image" content="https://tripwire.bharath.sh/api/og" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://tripwire.bharath.sh/api/og" />
+  <title>Tripwire: behavioral tests for Agent Skills</title>
+  <meta name="description" content="Run real agent sessions against your SKILL.md and block silent activation regressions before users encounter them.">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <link rel="canonical" href="https://tripwire.bharath.sh/">
+  <link rel="alternate" type="text/plain" href="https://tripwire.bharath.sh/llms.txt" title="Tripwire for language models">
+  <meta property="og:title" content="Tripwire: behavioral tests for Agent Skills">
+  <meta property="og:description" content="Catch skills that miss the right prompts or fire on the wrong ones. Test locally, commit the scenarios, and gate every PR.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tripwire.bharath.sh/">
+  <meta property="og:site_name" content="Tripwire">
+  <meta property="og:image" content="https://tripwire.bharath.sh/api/og">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tripwire: behavioral tests for Agent Skills">
+  <meta name="twitter:description" content="Catch missed activations and false triggers in real agent sessions before release.">
+  <meta name="twitter:image" content="https://tripwire.bharath.sh/api/og">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23ff4d4d'/%3E%3Cline x1='0' y1='16' x2='32' y2='16' stroke='%23ff4d4d' stroke-width='2'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://tripwire.bharath.sh/#software",
+          "name": "Tripwire",
+          "alternateName": "tripwire-skills",
+          "description": "Behavioral regression tests for Agent Skills. Tripwire runs real agent sessions to catch missed activations and false triggers before release.",
+          "url": "https://tripwire.bharath.sh/",
+          "applicationCategory": "DeveloperApplication",
+          "applicationSubCategory": "Software testing",
+          "operatingSystem": "macOS, Linux, Windows",
+          "softwareVersion": "0.1.3",
+          "downloadUrl": "https://www.npmjs.com/package/tripwire-skills",
+          "codeRepository": "https://github.com/bharath31/tripwire",
+          "license": "https://opensource.org/license/mit",
+          "isAccessibleForFree": true,
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Bharath Natarajan",
+            "url": "https://github.com/bharath31"
+          },
+          "sameAs": [
+            "https://github.com/bharath31/tripwire",
+            "https://www.npmjs.com/package/tripwire-skills",
+            "https://github.com/marketplace/actions/tripwire-for-agent-skills"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://tripwire.bharath.sh/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How is Tripwire different from a SKILL.md linter?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "A linter checks file structure and authoring rules. Tripwire also runs the skill through a real agent and observes whether it activates. That behavioral check catches valid-looking descriptions that miss intended prompts or trigger for unrelated requests."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Does Tripwire upload my skill or prompts?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Tripwire does not send skill files, prompts, file paths, repository names, model output, usernames, or credentials to its servers. Probes run locally or on your GitHub runner through your configured agent provider. Anonymous behavioral telemetry can be disabled with TRIPWIRE_TELEMETRY=0."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  </script>
 </head>
 <body>
   <div class="bg" aria-hidden="true"></div>
@@ -30,10 +97,10 @@
         tripwire
       </a>
       <nav class="nav-links" aria-label="Primary">
+        <a href="#playground">Playground</a>
         <a href="#checks">Checks</a>
         <a href="#coverage">Coverage</a>
         <a href="#ci">CI</a>
-        <a href="#playground">Playground</a>
       </nav>
       <div class="nav-actions">
         <a class="btn-gh" href="https://github.com/bharath31/tripwire" target="_blank" rel="noopener">
@@ -138,6 +205,44 @@
         <a href="https://github.com/bharath31/tripwire/tree/main/scripts/corpus-scan" target="_blank" rel="noopener">methodology &amp; data ↗</a>
       </p>
     </section>
+
+    <section class="section wrap playground" id="playground">
+      <div class="sec-head" data-reveal>
+        <p class="eyebrow">no install needed</p>
+        <h2>Try the lint check, right here</h2>
+        <p class="sec-sub">The real lint engine, bundled to your browser — nothing leaves this page. Full activation probing runs from the CLI and the Action.</p>
+      </div>
+
+      <div class="examples" data-reveal>
+        <span>Load an example:</span>
+        <button class="chip" data-example="good">Well-formed skill</button>
+        <button class="chip" data-example="bad">Skill with problems</button>
+      </div>
+
+      <div class="pg-grid" data-reveal>
+        <div class="pg-pane win">
+          <div class="win-bar">
+            <div class="win-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span class="win-title">SKILL.md</span>
+          </div>
+          <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
+        </div>
+        <div class="pg-pane win">
+          <div class="win-bar">
+            <div class="win-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span class="win-title">result</span>
+          </div>
+          <div id="pg-output" class="pg-output"></div>
+        </div>
+      </div>
+
+      <div class="share-row" data-reveal>
+        <button class="copy-btn" id="pg-share-link">Copy shareable link</button>
+        <a class="copy-btn" id="pg-share-card" href="#" target="_blank" rel="noopener">Open share card image</a>
+        <span id="pg-share-status" class="share-status" aria-live="polite"></span>
+      </div>
+    </section>
+
 
     <section class="section wrap" id="checks">
       <div class="sec-head" data-reveal>
@@ -284,43 +389,6 @@
           <h3>Badges &amp; auto-fix</h3>
           <p>A live README coverage badge, plus one-command fixes for mechanically-safe lint issues. Tripwire also ships as a skill and an early VS Code extension.</p>
         </div>
-      </div>
-    </section>
-
-    <section class="section wrap playground" id="playground">
-      <div class="sec-head" data-reveal>
-        <p class="eyebrow">no install needed</p>
-        <h2>Try the lint check, right here</h2>
-        <p class="sec-sub">The real lint engine, bundled to your browser — nothing leaves this page. Full activation probing runs from the CLI and the Action.</p>
-      </div>
-
-      <div class="examples" data-reveal>
-        <span>Load an example:</span>
-        <button class="chip" data-example="good">Well-formed skill</button>
-        <button class="chip" data-example="bad">Skill with problems</button>
-      </div>
-
-      <div class="pg-grid" data-reveal>
-        <div class="pg-pane win">
-          <div class="win-bar">
-            <div class="win-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-            <span class="win-title">SKILL.md</span>
-          </div>
-          <textarea id="pg-input" spellcheck="false" aria-label="Skill file input"></textarea>
-        </div>
-        <div class="pg-pane win">
-          <div class="win-bar">
-            <div class="win-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-            <span class="win-title">result</span>
-          </div>
-          <div id="pg-output" class="pg-output"></div>
-        </div>
-      </div>
-
-      <div class="share-row" data-reveal>
-        <button class="copy-btn" id="pg-share-link">Copy shareable link</button>
-        <a class="copy-btn" id="pg-share-card" href="#" target="_blank" rel="noopener">Open share card image</a>
-        <span id="pg-share-status" class="share-status" aria-live="polite"></span>
       </div>
     </section>
 

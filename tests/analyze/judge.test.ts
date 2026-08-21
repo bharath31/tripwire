@@ -3,13 +3,15 @@ import type { ProbeResult, ParsedSkill } from '../../src/types.js';
 import { defaultConfig } from '../../src/config.js';
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () {
+    return {
     messages: {
       create: vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: '{"score":8,"violations":["Did not cite spec"]}' }],
       }),
     },
-  })),
+    };
+  }),
 }));
 
 const skill: ParsedSkill = {
@@ -45,9 +47,11 @@ describe('judgeActivatedSessions', () => {
 
   it('returns score 0 and error message when response is not valid JSON', async () => {
     const Sdk = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    Sdk.mockImplementationOnce(() => ({
+    Sdk.mockImplementationOnce(function () {
+      return {
       messages: { create: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'not json' }] }) },
-    }));
+      };
+    });
     const { judgeActivatedSessions } = await import('../../src/analyze/judge.js');
     const results = await judgeActivatedSessions([activated], skill, defaultConfig, 'key');
     expect(results[0].judge?.score).toBe(0);

@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '**/SKILL.md'
+      - '**/tripwire-scenarios.yaml'
       - 'tests/fixtures/**'
 jobs:
   skills:
@@ -11,7 +12,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: ./

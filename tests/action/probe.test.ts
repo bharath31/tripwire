@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, rm, mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
 import yaml from 'js-yaml';
@@ -43,7 +43,7 @@ describe('probeSkill', () => {
 
   it('returns one ProbeResult per scenario', async () => {
     const r = await probeSkill({
-      skillFilePath: skillPath, skillName: 'demo', scenariosPath, workspace: dir,
+      skillFilePath: skillPath, skillName: 'demo', scenariosPath,
       adapterFactory: fakeAdapterFactory(),
     });
     expect(r.results).toHaveLength(4);
@@ -51,7 +51,7 @@ describe('probeSkill', () => {
 
   it('classifies a missed non-negative prompt as a gap', async () => {
     const r = await probeSkill({
-      skillFilePath: skillPath, skillName: 'demo', scenariosPath, workspace: dir,
+      skillFilePath: skillPath, skillName: 'demo', scenariosPath,
       adapterFactory: fakeAdapterFactory(),
     });
     const gaps = r.regressions.filter((x) => x.kind === 'gap');
@@ -61,7 +61,7 @@ describe('probeSkill', () => {
 
   it('classifies an activated negative prompt as a false-positive', async () => {
     const r = await probeSkill({
-      skillFilePath: skillPath, skillName: 'demo', scenariosPath, workspace: dir,
+      skillFilePath: skillPath, skillName: 'demo', scenariosPath,
       adapterFactory: fakeAdapterFactory(),
     });
     const fps = r.regressions.filter((x) => x.kind === 'false-positive');
@@ -69,25 +69,71 @@ describe('probeSkill', () => {
     expect(fps[0].prompt).toBe('yes do unrelated');
   });
 
-  it('stages the skill into <workspace>/.claude/skills/<name>/SKILL.md', async () => {
-    await probeSkill({
-      skillFilePath: skillPath, skillName: 'demo', scenariosPath, workspace: dir,
+  it('uses expectedActivation even when it overrides the zone convention', async () => {
+    const file: ScenariosFile = {
+      skillName: 'demo',
+      generatedAt: '2026-06-29T00:00:00Z',
+      scenarios: [
+        { prompt: 'yes supported boundary case', zone: 'negative', expectedActivation: true },
+      ],
+    };
+    await writeFile(scenariosPath, yaml.dump(file));
+    const r = await probeSkill({
+      skillFilePath: skillPath,
+      skillName: 'demo',
+      scenariosPath,
       adapterFactory: fakeAdapterFactory(),
     });
-    const staged = join(dir, '.claude', 'skills', 'demo', 'SKILL.md');
-    const content = await readFile(staged, 'utf-8');
-    expect(content).toContain('name: demo');
+    expect(r.regressions).toEqual([]);
   });
 
-  it('does not throw when the skill is already in a .claude/skills layout', async () => {
-    const inPlace = join(dir, '.claude', 'skills', 'demo');
-    await mkdir(inPlace, { recursive: true });
-    const inPlacePath = join(inPlace, 'SKILL.md');
-    await writeFile(inPlacePath, '---\nname: demo\ndescription: Use when demoing\n---\nBody');
+  it('classifies adapter failures as infrastructure errors, not gaps', async () => {
     const r = await probeSkill({
-      skillFilePath: inPlacePath, skillName: 'demo', scenariosPath, workspace: dir,
+      skillFilePath: skillPath,
+      skillName: 'demo',
+      scenariosPath,
+      adapterFactory: () => ({
+        run: async () => ({
+          activated: false,
+          rawOutput: '',
+          error: 'agent timed out',
+        }),
+      }),
+    });
+    expect(r.regressions).toHaveLength(4);
+    expect(r.regressions.every((x) => x.kind === 'infrastructure')).toBe(true);
+    expect(r.regressions[0].error).toBe('agent timed out');
+  });
+
+  it('stages the skill in an isolated Claude workspace, then removes it', async () => {
+    let observedCwd = '';
+    let observedContent = '';
+    await probeSkill({
+      skillFilePath: skillPath,
+      skillName: 'demo',
+      scenariosPath,
+      adapterFactory: (_skill, cwd) => {
+        observedCwd = cwd;
+        return {
+          run: async () => {
+            observedContent = await readFile(join(cwd, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf-8');
+            return { activated: false, rawOutput: '' };
+          },
+        };
+      },
+    });
+    expect(observedCwd).not.toBe(dir);
+    expect(observedContent).toContain('name: demo');
+    await expect(stat(observedCwd)).rejects.toThrow();
+  });
+
+  it('does not mutate the checked-out workspace', async () => {
+    await probeSkill({
+      skillFilePath: skillPath,
+      skillName: 'demo',
+      scenariosPath,
       adapterFactory: fakeAdapterFactory(),
     });
-    expect(r.results).toHaveLength(4);
+    await expect(stat(join(dir, '.claude'))).rejects.toThrow();
   });
 });

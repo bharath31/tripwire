@@ -10,9 +10,11 @@ on:
     paths:
       - "web/**"
       - "functions/**"
+      - "migrations/**"
       - "src/**" # the Pages Functions bundle src/lint + src/engine
       - "package.json"
       - "package-lock.json"
+      - "wrangler.jsonc"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
@@ -30,8 +32,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -40,7 +42,23 @@ jobs:
         run: npm run build:web
       - name: Publish to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
-        run: npx --yes wrangler@4 pages deploy web --project-name=tripwire --branch=main
+        run: npx --yes wrangler@4 pages deploy --branch=main
+      - name: Notify participating search engines
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
+        continue-on-error: true
+        run: |
+          curl --fail-with-body --silent --show-error --retry 2 \
+            --request POST https://api.indexnow.org/indexnow \
+            --header "content-type: application/json" \
+            --data '{
+              "host": "tripwire.bharath.sh",
+              "key": "d8eaba7a6b727e84404d69e217d122d6",
+              "keyLocation": "https://tripwire.bharath.sh/d8eaba7a6b727e84404d69e217d122d6.txt",
+              "urlList": [
+                "https://tripwire.bharath.sh/",
+                "https://tripwire.bharath.sh/pricing.md"
+              ]
+            }'
       - name: Note missing token
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
         run: echo "::warning::Set the CLOUDFLARE_API_TOKEN repo secret to enable auto-deploy."

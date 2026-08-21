@@ -3,13 +3,15 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import yaml from 'js-yaml';
 import type { ProbeResult, LintResult, CoverageReport, ScenariosFile, ProbeZone } from '../types.js';
+import { expectedActivationFor } from '../expectation.js';
 
 export function buildCoverageReport(
   skillName: string,
   lintResult: LintResult,
   results: ProbeResult[],
 ): CoverageReport {
-  const forZone = (z: ProbeZone) => results.filter(r => r.prompt.zone === z);
+  const behavioralResults = results.filter(r => !r.transcript.error);
+  const forZone = (z: ProbeZone) => behavioralResults.filter(r => r.prompt.zone === z);
   const zones: CoverageReport['zones'] = {
     core:     zoneStats(forZone('core')),
     adjacent: zoneStats(forZone('adjacent')),
@@ -19,20 +21,43 @@ export function buildCoverageReport(
 
   // Only average real scores (1-10). A judge score of 0 signals a parse
   // failure, not "terrible adherence" — including it would skew the mean.
-  const scored = results.filter(r => r.transcript.activated && r.judge && (r.judge.score ?? 0) > 0);
+  const scored = behavioralResults.filter(
+    r => r.transcript.activated && r.judge && (r.judge.score ?? 0) > 0,
+  );
   const qualityScore = scored.length > 0
     ? scored.reduce((s, r) => s + (r.judge?.score ?? 0), 0) / scored.length
     : 0;
 
-  const gaps = results.filter(r => !r.transcript.activated && r.prompt.zone !== 'negative');
-  const falsePositives = results.filter(r => r.transcript.activated && r.prompt.zone === 'negative');
+  const gaps = behavioralResults.filter(
+    r => expectedActivationFor(r.prompt) && !r.transcript.activated,
+  );
+  const falsePositives = behavioralResults.filter(
+    r => !expectedActivationFor(r.prompt) && r.transcript.activated,
+  );
+  const infrastructureErrors = results.filter(r => Boolean(r.transcript.error));
   const suggestions = buildSuggestions(gaps, falsePositives);
 
-  return { skillName, lintResult, results, zones, qualityScore, gaps, falsePositives, suggestions };
+  return {
+    skillName,
+    lintResult,
+    results,
+    zones,
+    qualityScore,
+    gaps,
+    falsePositives,
+    infrastructureErrors,
+    suggestions,
+  };
 }
 
 function zoneStats(rs: ProbeResult[]) {
-  return { activated: rs.filter(r => r.transcript.activated).length, total: rs.length };
+  return {
+    activated: rs.filter(r => r.transcript.activated).length,
+    matched: rs.filter(
+      r => r.transcript.activated === expectedActivationFor(r.prompt),
+    ).length,
+    total: rs.length,
+  };
 }
 
 function buildSuggestions(gaps: ProbeResult[], falsePositives: ProbeResult[]): string[] {
@@ -47,7 +72,7 @@ function buildSuggestions(gaps: ProbeResult[], falsePositives: ProbeResult[]): s
     out.push(`${gaps.filter(g => g.prompt.zone === 'core').length} core trigger(s) missed — review description specificity`);
   }
   if (falsePositives.length > 0) {
-    out.push('Add explicit prohibition for off-topic tasks in skill body or description');
+    out.push('Narrow the description so off-topic intents no longer match the skill');
   }
   return out;
 }
@@ -58,7 +83,7 @@ export function renderCoverageReport(report: CoverageReport): string {
 
   lines.push(zoneLine('Core triggers',    report.zones.core));
   lines.push(zoneLine('Adjacent/edge',    report.zones.adjacent));
-  lines.push(zoneLine('Negatives',        report.zones.negative, true));
+  lines.push(zoneLine('Negatives',        report.zones.negative));
   lines.push(zoneLine('Keyword variants', report.zones.variants));
   lines.push('');
   // Only meaningful when sessions were actually judged (the `analyze` path).
@@ -85,6 +110,16 @@ export function renderCoverageReport(report: CoverageReport): string {
     lines.push('');
   }
 
+  if (report.infrastructureErrors.length > 0) {
+    lines.push(chalk.bold(`─ INFRASTRUCTURE ERRORS ${'─'.repeat(23)}`));
+    for (const failure of report.infrastructureErrors) {
+      lines.push(
+        `${chalk.red('✗')} "${failure.prompt.prompt}" [${failure.prompt.zone}] — ${failure.transcript.error}`,
+      );
+    }
+    lines.push('');
+  }
+
   if (report.suggestions.length > 0) {
     lines.push(chalk.bold(`─ OPTIMIZATION SUGGESTIONS ${'─'.repeat(18)}`));
     report.suggestions.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
@@ -94,16 +129,23 @@ export function renderCoverageReport(report: CoverageReport): string {
   return lines.join('\n');
 }
 
+export function coverageExitCode(report: CoverageReport): 0 | 1 {
+  return report.gaps.length > 0
+    || report.falsePositives.length > 0
+    || report.infrastructureErrors.length > 0
+    ? 1
+    : 0;
+}
+
 function zoneLine(
   label: string,
-  stats: { activated: number; total: number },
-  negative = false,
+  stats: { activated: number; matched: number; total: number },
 ): string {
   if (stats.total === 0) return `${label.padEnd(22)} (none)`;
   const pct = Math.round((stats.activated / stats.total) * 100);
-  // For negative prompts the desired outcome is the opposite: low activation
-  // is good (the skill correctly stayed out of off-topic prompts).
-  const good = negative ? pct <= 15 : pct >= 80;
+  // A committed scenario is a contract. The summary is green only when every
+  // observed prompt in the zone matches its explicit expectation.
+  const good = stats.matched === stats.total;
   const icon = good ? chalk.green('✓') : chalk.yellow('⚠');
   return `${label.padEnd(22)} ${stats.activated}/${stats.total} activated   (${pct}%) ${icon}`;
 }
@@ -115,7 +157,7 @@ export async function exportScenarios(report: CoverageReport, skillFilePath: str
     scenarios: report.results.map(r => ({
       prompt: r.prompt.prompt,
       zone: r.prompt.zone,
-      expectedActivation: r.prompt.zone !== 'negative',
+      expectedActivation: expectedActivationFor(r.prompt),
     })),
   };
   const outputPath = join(dirname(skillFilePath), 'tripwire-scenarios.yaml');

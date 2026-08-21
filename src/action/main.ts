@@ -12,6 +12,7 @@ import { renderComment, computeExitCode } from './report.js';
 import { upsertStickyComment } from './comment.js';
 import { readContext } from './context.js';
 import type { SkillReport } from './types.js';
+import { trackBehavioralRun } from '../telemetry.js';
 
 function input(name: string, fallback = ''): string {
   return process.env[`INPUT_${name.toUpperCase().replace(/-/g, '_')}`] ?? fallback;
@@ -60,10 +61,11 @@ async function main(): Promise<void> {
           console.log(`::notice::tripwire: probe skipped for ${rel}: ${reason}`);
         } else {
           report.probe = await probeSkill({
-            skillFilePath: file, skillName, scenariosPath, workspace: cwd,
+            skillFilePath: file, skillName, scenariosPath,
           });
           for (const reg of report.probe.regressions) {
-            const msg = escapeMessage(`coverage ${reg.kind} [${reg.zone}]: "${reg.prompt}"`);
+            const detail = reg.kind === 'infrastructure' && reg.error ? ` — ${reg.error}` : '';
+            const msg = escapeMessage(`coverage ${reg.kind} [${reg.zone}]: "${reg.prompt}"${detail}`);
             console.log(`::error file=${rel}::${msg}`);
           }
         }
@@ -78,6 +80,18 @@ async function main(): Promise<void> {
       token: ctx.token, repo: ctx.repo, prNumber: ctx.prNumber, body: renderComment(reports),
     });
     console.log(`::notice::tripwire: comment ${result}`);
+  }
+
+  const probed = reports.filter((report) => report.probe);
+  if (probed.length > 0) {
+    const regressions = probed.flatMap((report) => report.probe?.regressions ?? []);
+    await trackBehavioralRun(
+      'action',
+      'claude',
+      regressions.some((regression) => regression.kind === 'infrastructure')
+        ? 'infrastructure_error'
+        : regressions.length > 0 ? 'behavior_failure' : 'pass',
+    );
   }
 
   const code = computeExitCode(reports, bool('fail-on-warning'));

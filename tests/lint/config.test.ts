@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLintConfig } from '../../src/lint/config.js';
@@ -68,5 +68,23 @@ describe('loadLintConfig', () => {
     const { ruleConfig, customRules } = await loadLintConfig(dir);
     expect(ruleConfig).toEqual({ 'name-kebab-case': 'warning' });
     expect(customRules.map((r) => r.id)).toEqual(['org-specific']);
+  });
+
+  it('discovers ancestor config and resolves plugins from that config directory', async () => {
+    const dir = await tmpDir();
+    const nested = join(dir, 'skills', 'review');
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(dir, 'my-rules.mjs'), `
+      export const rules = [{ id: 'root-rule', defaultLevel: 'warning', check: () => null }];
+    `);
+    await writeFile(join(dir, 'tripwire.yaml'), 'plugins:\n  - ./my-rules.mjs\n');
+    const { customRules } = await loadLintConfig(nested);
+    expect(customRules.map((rule) => rule.id)).toEqual(['root-rule']);
+  });
+
+  it('rejects a non-mapping config instead of ignoring it', async () => {
+    const dir = await tmpDir();
+    await writeFile(join(dir, 'tripwire.yaml'), 'invalid scalar');
+    await expect(loadLintConfig(dir)).rejects.toThrow('expected a YAML mapping');
   });
 });

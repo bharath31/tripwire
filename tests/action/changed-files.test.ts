@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { globToRegExp, filterByPatterns, parsePatterns } from '../../src/action/changed-files.js';
+import {
+  globToRegExp,
+  filterByPatterns,
+  parsePatterns,
+  skillFilesForChanges,
+} from '../../src/action/changed-files.js';
 
 describe('globToRegExp', () => {
   it('matches ** across directory separators', () => {
@@ -64,5 +69,33 @@ describe('filterByPatterns', () => {
 
   it('returns empty when nothing matches', () => {
     expect(filterByPatterns(['src/index.ts'], ['**/SKILL.md'])).toEqual([]);
+  });
+});
+
+describe('skillFilesForChanges', () => {
+  const exists = (path: string) => path === 'skills/a/SKILL.md';
+
+  it('runs the sibling skill when only its behavioral contract changes', () => {
+    expect(skillFilesForChanges(
+      ['skills/a/tripwire-scenarios.yaml'],
+      ['**/SKILL.md'],
+      exists,
+    )).toEqual(['skills/a/SKILL.md']);
+  });
+
+  it('deduplicates a skill when both the skill and scenarios change', () => {
+    expect(skillFilesForChanges(
+      ['skills/a/SKILL.md', 'skills/a/tripwire-scenarios.yaml'],
+      ['**/SKILL.md'],
+      exists,
+    )).toEqual(['skills/a/SKILL.md']);
+  });
+
+  it('ignores an orphan scenario file with no sibling skill', () => {
+    expect(skillFilesForChanges(
+      ['skills/missing/tripwire-scenarios.yaml'],
+      ['**/SKILL.md'],
+      exists,
+    )).toEqual([]);
   });
 });

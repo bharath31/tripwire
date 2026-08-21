@@ -10,6 +10,10 @@ export function renderEvalReport(skillName: string, results: EvalCaseResult[]): 
     const icon = r.passed ? chalk.green('✓') : chalk.red('✗');
     lines.push(`${icon} ${r.case.name}`);
 
+    if (r.infrastructureError) {
+      lines.push(`    ${chalk.red('✗')} infrastructure: ${r.infrastructureError}`);
+    }
+
     for (const a of r.assertionResults) {
       if (a.passed) continue;
       const desc = a.assertion.type === 'contains'

@@ -1,5 +1,5 @@
 name: 'Tripwire for Agent Skills'
-description: 'Lint and coverage-probe Agent Skills on every PR.'
+description: 'Catch missed activations and false triggers in Agent Skills with real-agent tests on every pull request.'
 author: 'bharath31'
 branding:
   icon: 'alert-triangle'
@@ -19,7 +19,7 @@ inputs:
     default: 'true'
   claude-version:
     description: 'Version of @anthropic-ai/claude-code to install for the probe.'
-    default: 'latest'
+    default: '2.1.220'
   working-directory:
     description: 'Root to resolve skills and run the probe from.'
     default: '.'

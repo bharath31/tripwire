@@ -64,6 +64,18 @@ describe('renderEvalReport', () => {
     expect(out).toContain('rubric skipped (no ANTHROPIC_API_KEY)');
   });
 
+  it('shows infrastructure failures separately from assertion failures', () => {
+    const result: EvalCaseResult = {
+      case: { name: 'agent run', prompt: 'p' },
+      rawOutput: '',
+      assertionResults: [],
+      infrastructureError: 'agent timed out',
+      passed: false,
+    };
+    const out = renderEvalReport('my-skill', [result]);
+    expect(out).toContain('infrastructure: agent timed out');
+  });
+
   it('summarizes pass count out of total across mixed results', () => {
     const out = renderEvalReport('my-skill', [passingCase, failingCase]);
     expect(out).toContain('1/2 cases passed');

@@ -7,13 +7,15 @@ import type { AgentAdapter, TranscriptResult } from '../../src/types.js';
 import type { EvalsFile } from '../../src/eval/types.js';
 
 vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () {
+    return {
     messages: {
       create: vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: '{"passed":true,"reasoning":"looks good"}' }],
       }),
     },
-  })),
+    };
+  }),
 }));
 
 const stubAdapter = (output: string): AgentAdapter => ({
@@ -64,9 +66,11 @@ describe('runEvalCase', () => {
 
   it('fails overall when assertions pass but the rubric judge fails', async () => {
     const Sdk = (await import('@anthropic-ai/sdk')).default as ReturnType<typeof vi.fn>;
-    Sdk.mockImplementationOnce(() => ({
+    Sdk.mockImplementationOnce(function () {
+      return {
       messages: { create: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"passed":false,"reasoning":"too terse"}' }] }) },
-    }));
+      };
+    });
     const { runEvalCase } = await import('../../src/eval/eval-runner.js');
     const result = await runEvalCase(
       { name: 'rubric-case', prompt: 'x', assertions: [{ type: 'contains', value: 'anything' }], rubric: 'must be polite' },
@@ -76,6 +80,24 @@ describe('runEvalCase', () => {
     expect(result.assertionResults.every((r) => r.passed)).toBe(true);
     expect(result.rubricResult?.passed).toBe(false);
     expect(result.passed).toBe(false);
+  });
+
+  it('reports an agent infrastructure failure without grading its error text', async () => {
+    const { runEvalCase } = await import('../../src/eval/eval-runner.js');
+    const adapter: AgentAdapter = {
+      run: vi.fn().mockResolvedValue({
+        activated: false,
+        rawOutput: '[adapter error] timeout',
+        error: 'timeout',
+      }),
+    };
+    const result = await runEvalCase(
+      { name: 'infra', prompt: 'x', assertions: [{ type: 'contains', value: 'timeout' }] },
+      adapter,
+    );
+    expect(result.passed).toBe(false);
+    expect(result.infrastructureError).toBe('timeout');
+    expect(result.assertionResults).toEqual([]);
   });
 });
 

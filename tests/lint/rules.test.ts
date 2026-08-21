@@ -52,14 +52,23 @@ describe('lint errors', () => {
     expect(result.errors.some(e => e.rule === 'description-present')).toBe(true);
   });
 
-  it('errors when description does not start with "Use when"', () => {
+  it('warns when description does not start with "Use when"', () => {
     const result = lint(makeSkill({ description: 'This skill handles something.' }));
-    expect(result.errors.some(e => e.rule === 'description-use-when')).toBe(true);
+    expect(result.errors.some(e => e.rule === 'description-use-when')).toBe(false);
+    expect(result.warnings.some(e => e.rule === 'description-use-when')).toBe(true);
   });
 
   it('passes when description starts with "Use when"', () => {
     const result = lint(makeSkill({ description: 'Use when fixing bugs.' }));
-    expect(result.errors.some(e => e.rule === 'description-use-when')).toBe(false);
+    expect(result.warnings.some(e => e.rule === 'description-use-when')).toBe(false);
+  });
+
+  it('lets teams promote the trigger-style advisory to an error', () => {
+    const result = lint(
+      makeSkill({ description: 'This skill handles something.' }),
+      { 'description-use-when': 'error' },
+    );
+    expect(result.errors.some(e => e.rule === 'description-use-when')).toBe(true);
   });
 
   it('errors when description exceeds 1024 characters', () => {

@@ -24,7 +24,7 @@ ${skill.body}
 
 Generate:
 - core: ${config.probe_count.core} prompts that clearly match this skill's stated intent
-- adjacent: ${config.probe_count.adjacent} prompts in the related domain but different intent (surfaces activation gaps)
+- adjacent: ${config.probe_count.adjacent} less-obvious prompts that are still inside the skill's intended scope and SHOULD activate
 - negative: ${config.probe_count.negative} prompts that must NOT activate this skill
 - variants: ${config.probe_count.variants} synonym/paraphrase prompts for core triggers (exposes keyword gaps)
 
@@ -59,10 +59,14 @@ Return exactly the JSON structure specified in the system prompt.`;
     Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 
   const prompts: ProbePrompt[] = [
-    ...zone(parsed.core).slice(0, config.probe_count.core).map(p => ({ zone: 'core' as const, prompt: p })),
-    ...zone(parsed.adjacent).slice(0, config.probe_count.adjacent).map(p => ({ zone: 'adjacent' as const, prompt: p })),
-    ...zone(parsed.negative).slice(0, config.probe_count.negative).map(p => ({ zone: 'negative' as const, prompt: p })),
-    ...zone(parsed.variants).slice(0, config.probe_count.variants).map(p => ({ zone: 'variants' as const, prompt: p })),
+    ...zone(parsed.core).slice(0, config.probe_count.core)
+      .map(p => ({ zone: 'core' as const, prompt: p, expectedActivation: true })),
+    ...zone(parsed.adjacent).slice(0, config.probe_count.adjacent)
+      .map(p => ({ zone: 'adjacent' as const, prompt: p, expectedActivation: true })),
+    ...zone(parsed.negative).slice(0, config.probe_count.negative)
+      .map(p => ({ zone: 'negative' as const, prompt: p, expectedActivation: false })),
+    ...zone(parsed.variants).slice(0, config.probe_count.variants)
+      .map(p => ({ zone: 'variants' as const, prompt: p, expectedActivation: true })),
   ];
 
   return { skillName: skill.frontmatter.name ?? 'unknown', prompts };

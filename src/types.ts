@@ -14,7 +14,7 @@ export interface Config {
   agent: string;
   model: string;
   judge_model: string;
-  thresholds: { core_activation: number; false_positive_rate: number };
+  concurrency: number;
   probe_count: { core: number; adjacent: number; negative: number; variants: number };
 }
 
@@ -34,6 +34,11 @@ export type ProbeZone = 'core' | 'adjacent' | 'negative' | 'variants';
 export interface ProbePrompt {
   zone: ProbeZone;
   prompt: string;
+  /**
+   * The behavioral contract for this prompt. Older generated matrices did not
+   * carry this field, so consumers fall back to the legacy zone convention.
+   */
+  expectedActivation?: boolean;
 }
 
 export interface ProbeMatrix {
@@ -45,6 +50,11 @@ export interface TranscriptResult {
   activated: boolean;
   skillName?: string;
   rawOutput: string;
+  /**
+   * Set when the agent session could not produce a trustworthy behavioral
+   * observation (missing CLI, timeout, authentication failure, non-zero exit).
+   */
+  error?: string;
 }
 
 export interface JudgeResult {
@@ -62,10 +72,11 @@ export interface CoverageReport {
   skillName: string;
   lintResult: LintResult;
   results: ProbeResult[];
-  zones: Record<ProbeZone, { activated: number; total: number }>;
+  zones: Record<ProbeZone, { activated: number; matched: number; total: number }>;
   qualityScore: number;
   gaps: ProbeResult[];
   falsePositives: ProbeResult[];
+  infrastructureErrors: ProbeResult[];
   suggestions: string[];
 }
 
