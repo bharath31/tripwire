@@ -3320,10 +3320,44 @@ function parseScenarios(raw) {
     };
   });
 }
-async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3) {
-  const raw = await readFile3(scenariosPath, "utf-8");
-  const scenarios = parseScenarios(raw);
-  return mapConcurrent(scenarios, concurrency, async (s) => {
+async function loadScenariosFile(scenariosPath, expectedSkillName) {
+  let raw;
+  try {
+    raw = await readFile3(scenariosPath, "utf-8");
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      throw new Error(
+        `no scenarios file found at ${scenariosPath}
+Run 'tripwire analyze' on the skill first to generate one, then commit tripwire-scenarios.yaml alongside it.`
+      );
+    }
+    throw err;
+  }
+  let doc;
+  try {
+    doc = load(raw);
+  } catch (err) {
+    throw new Error(`invalid YAML in ${scenariosPath}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const candidate = doc ?? {};
+  if (typeof candidate.skillName !== "string" || candidate.skillName.trim().length === 0) {
+    throw new Error(`${scenariosPath} is missing \`skillName\` \u2014 run \`tripwire analyze <skill>\` to regenerate it`);
+  }
+  if (expectedSkillName && candidate.skillName !== expectedSkillName) {
+    throw new Error(
+      `${scenariosPath} belongs to skill "${candidate.skillName}", but you are testing "${expectedSkillName}".
+Re-run 'tripwire analyze' on this skill to generate matching scenarios.`
+    );
+  }
+  return {
+    skillName: candidate.skillName,
+    generatedAt: typeof candidate.generatedAt === "string" ? candidate.generatedAt : "",
+    scenarios: parseScenarios(raw)
+  };
+}
+async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3, expectedSkillName) {
+  const file = await loadScenariosFile(scenariosPath, expectedSkillName);
+  return mapConcurrent(file.scenarios, concurrency, async (s) => {
     const transcript = await adapter.run(s.prompt);
     return {
       prompt: {

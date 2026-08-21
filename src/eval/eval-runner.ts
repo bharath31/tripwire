@@ -10,8 +10,11 @@ export async function loadEvalsFile(path: string): Promise<EvalsFile> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
-  } catch {
-    throw new Error(`no evals file found at ${path} — author one (see the README for the tripwire-evals.yaml format)`);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      throw new Error(`no evals file found at ${path} — author one (see the README for the tripwire-evals.yaml format)`);
+    }
+    throw err;
   }
   let parsed: unknown;
   try {
@@ -22,6 +25,8 @@ export async function loadEvalsFile(path: string): Promise<EvalsFile> {
   validateEvalsFile(parsed);
   return parsed;
 }
+
+const ASSERTION_TYPES: readonly string[] = ['contains', 'not_contains'];
 
 export function validateEvalsFile(file: unknown): asserts file is EvalsFile {
   if (typeof file !== 'object' || file === null || Array.isArray(file)) {
@@ -39,9 +44,23 @@ export function validateEvalsFile(file: unknown): asserts file is EvalsFile {
     }
     if (c?.assertions !== undefined && !Array.isArray(c.assertions)) {
       problems.push(`${label}: \`assertions\` must be a list`);
+    } else if (Array.isArray(c?.assertions)) {
+      c.assertions!.forEach((a, j) => {
+        if (typeof a?.type !== 'string' || !ASSERTION_TYPES.includes(a.type)) {
+          problems.push(`${label}: assertion ${j + 1} has \`type\` "${String(a?.type)}" — must be contains or not_contains`);
+        }
+        if (typeof a?.value !== 'string' || a.value.length === 0) {
+          problems.push(`${label}: assertion ${j + 1} is missing \`value\` (a non-empty string to look for in the output)`);
+        }
+      });
     }
     if (c?.rubric !== undefined && (typeof c.rubric !== 'string' || c.rubric.trim().length === 0)) {
       problems.push(`${label}: \`rubric\` must be a non-empty string`);
+    }
+    // A case with neither check would trivially "pass" while measuring nothing.
+    const hasAssertions = Array.isArray(c?.assertions) && c.assertions.length > 0;
+    if (!hasAssertions && !c?.rubric) {
+      problems.push(`${label}: has no \`assertions\` and no \`rubric\` — it can only ever pass, so add at least one check`);
     }
   });
   if (problems.length > 0) {

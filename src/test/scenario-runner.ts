@@ -60,7 +60,7 @@ async function loadScenariosFile(scenariosPath: string, expectedSkillName?: stri
 
   let doc: unknown;
   try {
-    doc = yaml.load(raw, { schema: yaml.DEFAULT_SCHEMA });
+    doc = yaml.load(raw);
   } catch (err) {
     throw new Error(`invalid YAML in ${scenariosPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
