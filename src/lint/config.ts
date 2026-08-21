@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { Rule } from './rule-types.js';
 import type { RuleConfig } from './registry.js';
 import { resolvePreset } from './presets.js';
@@ -32,7 +32,7 @@ export async function loadLintConfig(cwd: string = process.cwd()): Promise<Resol
   if (!configPath) return { ruleConfig: {}, customRules: [] };
 
   const text = await readFile(configPath, 'utf-8');
-  const value = yaml.load(text, { schema: yaml.DEFAULT_SCHEMA });
+  const value = yaml.load(text);
   if (value == null) return { ruleConfig: {}, customRules: [] };
   if (typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid ${configPath}: expected a YAML mapping`);

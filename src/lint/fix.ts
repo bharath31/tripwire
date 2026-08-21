@@ -1,4 +1,4 @@
-import matter from 'gray-matter';
+import { parseFrontmatter, stringifyFrontmatter } from '../frontmatter.js';
 import { lint } from './rules.js';
 import type { ParsedSkill } from '../types.js';
 
@@ -26,7 +26,7 @@ export interface FixResult {
 }
 
 export function fixSkill(raw: string): FixResult {
-  const parsed = matter(raw);
+  const parsed = parseFrontmatter(raw);
   const skill: ParsedSkill = {
     frontmatter: parsed.data as ParsedSkill['frontmatter'],
     body: parsed.content.trim(),
@@ -49,6 +49,6 @@ export function fixSkill(raw: string): FixResult {
     return { fixed: raw, changed: false, changes: [] };
   }
 
-  const fixed = matter.stringify(parsed.content, parsed.data);
+  const fixed = stringifyFrontmatter(parsed.data, parsed.content);
   return { fixed, changed: true, changes };
 }

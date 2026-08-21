@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { probeSkill } from '../../src/action/probe.js';
 import type { AgentAdapter, ScenariosFile, TranscriptResult } from '../../src/types.js';
 

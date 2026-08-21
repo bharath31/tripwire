@@ -1,11 +1,11 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import matter from 'gray-matter';
+import { parseFrontmatter } from './frontmatter.js';
 import type { ParsedSkill } from './types.js';
 
 export async function parseSkill(filePath: string): Promise<ParsedSkill> {
   const raw = await readFile(filePath, 'utf-8');
-  const parsed = matter(raw);
+  const parsed = parseFrontmatter(raw);
   return {
     frontmatter: parsed.data as Partial<{ name: string; description: string; [k: string]: unknown }>,
     body: parsed.content.trim(),

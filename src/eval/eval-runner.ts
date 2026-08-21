@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentAdapter } from '../types.js';
 import type { EvalsFile, EvalCase, EvalCaseResult, RubricResult } from './types.js';
@@ -8,7 +8,7 @@ import { judgeRubric } from './rubric-judge.js';
 
 export async function loadEvalsFile(path: string): Promise<EvalsFile> {
   const raw = await readFile(path, 'utf-8');
-  return yaml.load(raw, { schema: yaml.DEFAULT_SCHEMA }) as EvalsFile;
+  return yaml.load(raw) as EvalsFile;
 }
 
 export interface RunEvalsOptions {
