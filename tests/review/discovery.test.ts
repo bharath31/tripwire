@@ -9,6 +9,7 @@ import {
   rm,
   stat,
   symlink,
+  truncate,
   utimes,
   writeFile,
 } from 'node:fs/promises';
@@ -22,6 +23,7 @@ import {
   type DiscoveryRoot,
   type DiscoveredTranscript,
 } from '../../src/review/discovery.js';
+import { DEFAULT_INGESTION_LIMITS } from '../../src/review/ingestion.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -260,7 +262,124 @@ describe('recent-run discovery', () => {
     expect(result.warnings).toEqual([
       expect.objectContaining({ code: 'empty-file', path: empty }),
     ]);
-    expect(selectLatestReady(result)).toEqual({ kind: 'none', paths: [], transcript: null });
+    expect(await selectLatestReady(result)).toEqual({ kind: 'none', paths: [], transcript: null, skipped: [] });
+  });
+
+  it('bounds directory depth without hiding shallower candidates', async () => {
+    const directory = await temporaryDirectory();
+    const shallow = await fixture(
+      join(directory, 'shallow.jsonl'),
+      '{}\n',
+      '2026-08-22T10:00:00.000Z',
+    );
+    await fixture(
+      join(directory, 'one', 'two', 'deep.jsonl'),
+      '{}\n',
+      '2026-08-22T11:00:00.000Z',
+    );
+
+    const result = await discoverRecentRuns({
+      roots: [root(directory)],
+      limits: { maxDepth: 1 },
+    });
+
+    expect(result.transcripts.map((item) => item.path)).toEqual([await realpath(shallow)]);
+    expect(result.warnings).toContainEqual(expect.objectContaining({
+      code: 'depth-limit-reached',
+      path: join(directory, 'one', 'two'),
+    }));
+  });
+
+  it('bounds examined entries and retained candidates with explicit diagnostics', async () => {
+    const entryDirectory = await temporaryDirectory('tripwire-entry-limit-');
+    for (const name of ['a.jsonl', 'b.jsonl', 'c.jsonl']) {
+      await fixture(join(entryDirectory, name), '{}\n', '2026-08-22T10:00:00.000Z');
+    }
+    const entries = await discoverRecentRuns({
+      roots: [root(entryDirectory)],
+      limits: { maxEntries: 2 },
+    });
+
+    expect(entries.transcripts).toHaveLength(2);
+    expect(entries.warnings).toContainEqual(expect.objectContaining({ code: 'entry-limit-reached' }));
+
+    const candidateDirectory = await temporaryDirectory('tripwire-candidate-limit-');
+    for (const name of ['a.jsonl', 'b.jsonl']) {
+      await fixture(join(candidateDirectory, name), '{}\n', '2026-08-22T10:00:00.000Z');
+    }
+    const candidates = await discoverRecentRuns({
+      roots: [root(candidateDirectory)],
+      limits: { maxCandidates: 1 },
+    });
+
+    expect(candidates.transcripts).toHaveLength(1);
+    expect(candidates.warnings).toContainEqual(expect.objectContaining({ code: 'candidate-limit-reached' }));
+  });
+
+  it('bounds warning retention and reports how many details were omitted', async () => {
+    const directory = await temporaryDirectory();
+    for (const name of ['a.jsonl', 'b.jsonl', 'c.jsonl', 'd.jsonl']) {
+      await fixture(join(directory, name), '', '2026-08-22T10:00:00.000Z');
+    }
+
+    const result = await discoverRecentRuns({
+      roots: [root(directory)],
+      limits: { maxWarnings: 2 },
+    });
+
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings[0]).toMatchObject({ code: 'empty-file', path: join(directory, 'a.jsonl') });
+    expect(result.warnings[1]).toMatchObject({ code: 'warnings-truncated' });
+    expect(result.warnings[1].message).toContain('3 warnings omitted');
+  });
+
+  it('rejects canonical candidates that escape their discovery root', async () => {
+    const directory = await temporaryDirectory();
+    const projects = join(directory, 'projects');
+    const candidate = await fixture(
+      join(projects, 'candidate.jsonl'),
+      '{}\n',
+      '2026-08-22T10:00:00.000Z',
+    );
+    const outside = await fixture(
+      join(directory, 'outside.jsonl'),
+      '{}\n',
+      '2026-08-22T11:00:00.000Z',
+    );
+    const fileSystem: DiscoveryFileSystem = {
+      ...realFileSystem,
+      realpath: async (path) => (
+        path === candidate ? realFileSystem.realpath(outside) : realFileSystem.realpath(path)
+      ),
+    };
+
+    const result = await discoverRecentRuns({ roots: [root(projects)], fileSystem });
+
+    expect(result.transcripts).toEqual([]);
+    expect(result.warnings).toContainEqual(expect.objectContaining({
+      code: 'outside-root',
+      path: candidate,
+    }));
+  });
+
+  it('honors cancellation during traversal', async () => {
+    const directory = await temporaryDirectory();
+    await fixture(join(directory, 'candidate.jsonl'), '{}\n', '2026-08-22T10:00:00.000Z');
+    const controller = new AbortController();
+    const fileSystem: DiscoveryFileSystem = {
+      ...realFileSystem,
+      readdir: async (path) => {
+        const entries = await realFileSystem.readdir(path);
+        controller.abort();
+        return entries;
+      },
+    };
+
+    await expect(discoverRecentRuns({
+      roots: [root(directory)],
+      fileSystem,
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 
@@ -278,25 +397,88 @@ describe('latest-ready selection', () => {
     size,
   });
 
-  it('lets explicit transcript paths override discovery', () => {
+  it('lets explicit transcript paths override discovery', async () => {
     const result = { transcripts: [transcript('/discovered.jsonl', 'claude-code')] };
-    expect(selectLatestReady(result, { explicitPaths: ['/explicit-a', '/explicit-b'] })).toEqual({
+    expect(await selectLatestReady(result, { explicitPaths: ['/explicit-a', '/explicit-b'] })).toEqual({
       kind: 'explicit',
       paths: ['/explicit-a', '/explicit-b'],
       transcript: null,
+      skipped: [],
     });
   });
 
-  it('selects the first ready run, optionally restricted to one adapter', () => {
+  it('selects the first ready run, optionally restricted to one adapter', async () => {
     const empty = transcript('/empty.jsonl', 'claude-code', 0);
     const claude = transcript('/claude.jsonl', 'claude-code');
     const codex = transcript('/codex.jsonl', 'codex-cli');
     const result = { transcripts: [empty, claude, codex] };
 
-    expect(selectLatestReady(result)).toMatchObject({ kind: 'latest', transcript: claude });
-    expect(selectLatestReady(result, { adapter: 'codex-cli' }))
+    const probe = async () => null;
+    expect(await selectLatestReady(result, { probe })).toMatchObject({ kind: 'latest', transcript: claude });
+    expect(await selectLatestReady(result, { adapter: 'codex-cli', probe }))
       .toMatchObject({ kind: 'latest', transcript: codex });
-    expect(selectLatestReady(result, { adapter: 'gemini-cli' }))
-      .toEqual({ kind: 'none', paths: [], transcript: null });
+    expect(await selectLatestReady(result, { adapter: 'gemini-cli', probe }))
+      .toEqual({ kind: 'none', paths: [], transcript: null, skipped: [] });
+  });
+
+  it('skips a newer unsupported run and reports why it selected the next one', async () => {
+    const unsupported = transcript('/newest.jsonl', 'claude-code');
+    const ready = transcript('/ready.jsonl', 'claude-code');
+    const selection = await selectLatestReady(
+      { transcripts: [unsupported, ready] },
+      { probe: async (candidate) => candidate === unsupported ? 'unsupported-format' : null },
+    );
+
+    expect(selection).toMatchObject({
+      kind: 'latest',
+      transcript: ready,
+      skipped: [{ transcript: unsupported, reason: 'unsupported-format' }],
+    });
+  });
+
+  it('falls back past newer unsupported and oversized files using the default readiness probe', async () => {
+    const directory = await temporaryDirectory();
+    const unsupported = await fixture(
+      join(directory, 'unsupported.jsonl'),
+      '{"hello":"world"}\n',
+      '2026-08-22T14:00:00.000Z',
+    );
+    const oversized = await fixture(
+      join(directory, 'oversized.jsonl'),
+      '{}\n',
+      '2026-08-22T13:00:00.000Z',
+    );
+    await truncate(oversized, DEFAULT_INGESTION_LIMITS.maxFileBytes + 1);
+    const oversizedTimestamp = new Date('2026-08-22T13:00:00.000Z');
+    await utimes(oversized, oversizedTimestamp, oversizedTimestamp);
+    const ready = await fixture(
+      join(directory, 'ready.jsonl'),
+      `${JSON.stringify({
+        type: 'assistant',
+        sessionId: 'ready-session',
+        message: {
+          id: 'ready-message',
+          content: [{
+            type: 'tool_use',
+            id: 'ready-call',
+            name: 'Read',
+            input: { file_path: '/repo/README.md' },
+          }],
+        },
+      })}\n`,
+      '2026-08-22T12:00:00.000Z',
+    );
+
+    const result = await discoverRecentRuns({ roots: [root(directory)] });
+    const selection = await selectLatestReady(result);
+
+    expect(selection).toMatchObject({
+      kind: 'latest',
+      transcript: { path: await realpath(ready) },
+      skipped: [
+        { transcript: { path: await realpath(unsupported) }, reason: 'unsupported-format' },
+        { transcript: { path: await realpath(oversized) }, reason: 'oversized' },
+      ],
+    });
   });
 });

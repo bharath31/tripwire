@@ -27,13 +27,21 @@ function stringValue(...values: unknown[]): string | null {
 
 function explicitOutcome(value: Record<string, any>): ToolOutcome {
   if (value.error !== undefined && value.error !== null) return 'error';
+  if (value.is_error === true || value.isError === true || value.success === false) return 'error';
+  if (value.is_error === false || value.isError === false || value.success === true) return 'success';
   const exitCode = own(value, 'exit_code') ? value.exit_code : value.exitCode;
   if (typeof exitCode === 'number' && Number.isFinite(exitCode)) return exitCode === 0 ? 'success' : 'error';
 
   const status = typeof value.status === 'string' ? value.status.toLowerCase() : null;
   if (status && ['success', 'succeeded', 'completed', 'complete', 'done'].includes(status)) return 'success';
-  if (status && ['error', 'failed', 'failure', 'cancelled', 'canceled', 'rejected'].includes(status)) return 'error';
+  if (status && ['error', 'failed', 'failure', 'cancelled', 'canceled', 'rejected', 'declined'].includes(status)) return 'error';
   return 'unknown';
+}
+
+function diagnosticType(value: unknown): string {
+  if (typeof value !== 'string') return value === undefined || value === null ? 'missing' : typeof value;
+  const sanitized = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?').slice(0, 120);
+  return sanitized || 'missing';
 }
 
 function without(value: Record<string, any>, excluded: readonly string[]): Record<string, unknown> {
@@ -178,8 +186,94 @@ function responseOutput(payload: Record<string, any>): { callId: string | null; 
   };
 }
 
+function mcpCompletionOutcome(payload: Record<string, any>): ToolOutcome {
+  const result = payload.result;
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    const resultObject = result as Record<string, any>;
+    if (own(resultObject, 'Err') || own(resultObject, 'err')) return 'error';
+    const ok = resultObject.Ok ?? resultObject.ok;
+    if (ok !== undefined) {
+      if (ok && typeof ok === 'object' && !Array.isArray(ok)) {
+        const okObject = ok as Record<string, any>;
+        return okObject.is_error === true || okObject.isError === true ? 'error' : 'success';
+      }
+      return 'success';
+    }
+    if (resultObject.is_error === true || resultObject.isError === true) return 'error';
+    if (resultObject.is_error === false || resultObject.isError === false) return 'success';
+  }
+  return explicitOutcome(payload);
+}
+
+function normalizeLegacyCompletion(payload: Record<string, any>): NormalizedToolItem | null {
+  const callId = stringValue(payload.call_id, payload.callId, payload.id);
+  switch (payload.type) {
+    case 'exec_command_end':
+      return {
+        callId,
+        eventId: callId,
+        toolName: 'command_execution',
+        input: without(payload, [
+          'type', 'call_id', 'callId', 'id', 'status', 'exit_code', 'exitCode', 'stdout', 'stderr',
+          'aggregated_output', 'formatted_output', 'duration', 'completed_at_ms', 'error',
+        ]),
+        result: payload.aggregated_output ?? payload.formatted_output ?? {
+          stdout: payload.stdout,
+          stderr: payload.stderr,
+        },
+        outcome: explicitOutcome(payload),
+      };
+    case 'patch_apply_end':
+      return {
+        callId,
+        eventId: callId,
+        toolName: 'file_change',
+        input: { changes: payload.changes ?? {} },
+        result: { stdout: payload.stdout, stderr: payload.stderr },
+        outcome: explicitOutcome(payload),
+      };
+    case 'mcp_tool_call_end': {
+      const invocation = payload.invocation && typeof payload.invocation === 'object' && !Array.isArray(payload.invocation)
+        ? payload.invocation as Record<string, any>
+        : payload;
+      const server = stringValue(invocation.server, payload.server);
+      const tool = stringValue(invocation.tool, invocation.name, payload.tool, payload.name) ?? 'unknown';
+      return {
+        callId,
+        eventId: callId,
+        toolName: server ? `${server}.${tool}` : tool,
+        input: parseArguments(invocation.arguments ?? invocation.args ?? payload.arguments ?? payload.args),
+        result: payload.result,
+        outcome: mcpCompletionOutcome(payload),
+      };
+    }
+    case 'web_search_end':
+      return {
+        callId,
+        eventId: callId,
+        toolName: 'web_search',
+        input: without(payload, ['type', 'call_id', 'callId', 'id', 'status', 'result', 'results', 'error']),
+        result: payload.results ?? payload.result,
+        outcome: explicitOutcome(payload),
+      };
+    case 'dynamic_tool_call_response':
+      return {
+        callId,
+        eventId: callId,
+        toolName: stringValue(payload.tool, payload.name) ?? 'dynamic_tool',
+        input: payload.arguments ?? {},
+        result: payload.content_items ?? payload.result,
+        outcome: explicitOutcome(payload),
+      };
+    default:
+      return null;
+  }
+}
+
 /** Review adapter for both `codex exec --json` and persisted rollout JSONL. */
 export class CodexCliReviewAdapter extends BaseReviewAdapter {
+  private sawCanonicalSessionMetadata = false;
+
   constructor(context: AdapterContext, format = 'codex-jsonl') {
     const identity: AdapterIdentity = {
       harness: 'codex-cli',
@@ -213,6 +307,8 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
         return;
       case 'turn.failed':
       case 'error':
+      case 'turn_context':
+      case 'compacted':
         return;
       case 'item.started':
       case 'item.updated':
@@ -226,10 +322,10 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
         this.handleResponseItem(record, object.payload, object.timestamp);
         return;
       case 'event_msg':
-        this.handleEventMessage(object.payload);
+        this.handleEventMessage(record, object.payload, object.timestamp);
         return;
       default:
-        this.markUnsupported(record, `Unsupported Codex record type: ${String(object.type ?? 'missing')}`);
+        this.markUnsupported(record, `Unsupported Codex record type: ${diagnosticType(object.type)}`);
     }
   }
 
@@ -243,7 +339,7 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
     if (!normalized) {
       // Reasoning, plan, and agent-message items are known but not review tool events.
       if (!['reasoning', 'todo_list', 'agent_message'].includes(String(item.type))) {
-        this.markUnsupported(record, `Unsupported Codex item type: ${String(item.type ?? 'missing')}`);
+        this.markUnsupported(record, `Unsupported Codex item type: ${diagnosticType(item.type)}`);
       }
       return;
     }
@@ -258,7 +354,7 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
     const payload = rawPayload as Record<string, any>;
     const output = responseOutput(payload);
     if (output) {
-      if (!output.callId || !this.updateResult(output.callId, output.outcome, output.result)) {
+      if (!output.callId || !this.mergeResult(output.callId, output.outcome, output.result, record)) {
         this.addDiagnostic({
           code: 'unsupported-signal',
           severity: 'warning',
@@ -278,12 +374,12 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
 
     // Messages, reasoning, and compaction records contain no tool operation.
     if (!['message', 'reasoning', 'compaction', 'ghost_snapshot'].includes(String(payload.type))) {
-      this.markUnsupported(record, `Unsupported Codex response item: ${String(payload.type ?? 'missing')}`);
+      this.markUnsupported(record, `Unsupported Codex response item: ${diagnosticType(payload.type)}`);
     }
   }
 
   private addOrUpdate(record: LocatedRecord, item: NormalizedToolItem, timestamp: unknown): void {
-    if (item.callId && this.updateResult(item.callId, item.outcome, item.result)) {
+    if (item.callId && this.mergeResult(item.callId, item.outcome, item.result, record)) {
       this.noteTimestamp(timestampOf(timestamp));
       return;
     }
@@ -298,6 +394,24 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
       result: item.result,
     });
     if (event) this.addSkillActivations(record, event, timestamp);
+  }
+
+  private mergeResult(callId: string, outcome: ToolOutcome, result: unknown, record: LocatedRecord): boolean {
+    const existing = this.events.find((event) => event.callId === callId);
+    if (!existing) return false;
+    const mergedOutcome = outcome === 'unknown' ? existing.outcome : outcome;
+    if (result === undefined) {
+      if (outcome !== 'unknown') {
+        existing.outcome = outcome;
+        existing.resultLocation = {
+          line: record.line,
+          byteStart: record.byteStart,
+          byteEnd: record.byteEnd,
+        };
+      }
+      return true;
+    }
+    return this.updateResult(callId, mergedOutcome, result, record);
   }
 
   private addSkillActivations(record: LocatedRecord, toolEvent: AdapterEvent, timestamp: unknown): void {
@@ -320,15 +434,17 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
 
   private handleSessionMetadata(rawPayload: unknown, timestamp: unknown): void {
     if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return;
+    if (this.sawCanonicalSessionMetadata) return;
+    this.sawCanonicalSessionMetadata = true;
     const payload = rawPayload as Record<string, any>;
     const previous = stringValue(
       payload.continued_from_session_id,
       payload.previous_session_id,
-      payload.parent_thread_id,
       payload.forked_from_id,
     );
-    const sessionId = stringValue(payload.id, payload.session_id, payload.thread_id);
-    this.setSessionIdentity(sessionId, payload.logical_session_id ?? previous ?? sessionId);
+    const sessionId = stringValue(payload.id, payload.thread_id, payload.session_id);
+    const logicalSessionId = stringValue(payload.logical_session_id, payload.session_id, sessionId);
+    this.setSessionIdentity(sessionId, logicalSessionId);
     this.setContinuation(previous);
     this.setProject(
       payload.cwd ?? payload.project_root,
@@ -339,22 +455,31 @@ export class CodexCliReviewAdapter extends BaseReviewAdapter {
     this.noteTimestamp(timestampOf(payload.timestamp ?? timestamp));
   }
 
-  private handleEventMessage(rawPayload: unknown): void {
+  private handleEventMessage(record: LocatedRecord, rawPayload: unknown, timestamp: unknown): void {
     if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) return;
     const payload = rawPayload as Record<string, any>;
-    if (payload.type !== 'token_count') return;
-    const info = payload.info && typeof payload.info === 'object' ? payload.info as Record<string, any> : {};
-    const last = info.last_token_usage && typeof info.last_token_usage === 'object'
-      ? info.last_token_usage as Record<string, any>
-      : null;
-    if (last) {
-      this.addUsage(last.input_tokens, last.output_tokens, last.cached_input_tokens);
+    if (payload.type === 'item_completed') {
+      this.handleExecItem(record, payload.item, timestamp ?? payload.timestamp);
       return;
     }
+    const completion = normalizeLegacyCompletion(payload);
+    if (completion) {
+      this.addOrUpdate(record, completion, timestamp ?? payload.timestamp);
+      return;
+    }
+    if (payload.type !== 'token_count') return;
+    const info = payload.info && typeof payload.info === 'object' ? payload.info as Record<string, any> : {};
     const total = info.total_token_usage && typeof info.total_token_usage === 'object'
       ? info.total_token_usage as Record<string, any>
       : null;
-    if (total) this.setCumulativeUsage(total);
+    if (total) {
+      this.setCumulativeUsage(total);
+      return;
+    }
+    const last = info.last_token_usage && typeof info.last_token_usage === 'object'
+      ? info.last_token_usage as Record<string, any>
+      : null;
+    if (last) this.addUsage(last.input_tokens, last.output_tokens, last.cached_input_tokens);
   }
 
   private readUsage(rawUsage: unknown): void {

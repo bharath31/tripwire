@@ -37,6 +37,11 @@ export interface AdapterEvent {
   line: number;
   byteStart: number;
   byteEnd: number;
+  resultLocation: {
+    line: number;
+    byteStart: number;
+    byteEnd: number;
+  } | null;
 }
 
 export interface AdapterSessionMetadata {

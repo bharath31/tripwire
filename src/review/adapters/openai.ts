@@ -13,6 +13,13 @@ export const OPENAI_REVIEW_FORMAT = 'openai-chat-tool-jsonl';
 interface PendingResult {
   outcome: ToolOutcome;
   result: unknown;
+  located: LocatedRecord;
+}
+
+interface CallCorrelation {
+  correlationId: string;
+  group: string;
+  hasResult: boolean;
 }
 
 interface MessageContext {
@@ -53,10 +60,36 @@ function isResponsesOrAgentsShape(record: Record<string, any>): boolean {
   return Array.isArray(record.output) && !Array.isArray(record.choices) && !Array.isArray(record.messages);
 }
 
-/** A positive score means the record is in the documented OpenAI compatibility subset. */
+function capabilityLevel(format: string): 'structured' | 'heuristic' | 'unavailable' {
+  if (format === 'openai-chat-completions-jsonl') return 'structured';
+  if (format === 'openai-chat-messages-jsonl') return 'unavailable';
+  return 'heuristic';
+}
+
+function finiteTokenCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function messageGroup(scope: string): string {
+  for (const marker of [':message:', ':choice:']) {
+    const index = scope.lastIndexOf(marker);
+    if (index >= 0) return scope.slice(0, index);
+  }
+  return scope;
+}
+
+/** Detects both the documented compatibility subset and explicitly unsupported streaming chunks. */
 export function detectOpenAIRecord(value: unknown): AdapterDetection | null {
   const record = objectValue(value);
   if (!record || isResponsesOrAgentsShape(record)) return null;
+  if (record.object === 'chat.completion.chunk') {
+    return {
+      id: 'openai',
+      format: 'openai-chat-completions-unsupported',
+      score: 6,
+      confidence: 'high',
+    };
+  }
   let score = 0;
   if (record.object === 'chat.completion' && Array.isArray(record.choices)) score += 6;
   if (Array.isArray(record.choices)) score += 2;
@@ -64,10 +97,12 @@ export function detectOpenAIRecord(value: unknown): AdapterDetection | null {
   if (typeof record.role === 'string') score += 3;
   if (Array.isArray(record.tool_calls) || typeof record.tool_call_id === 'string') score += 3;
   return score === 0
-    ? null
-    : {
+      ? null
+      : {
         id: 'openai',
-        format: OPENAI_REVIEW_FORMAT,
+        format: Array.isArray(record.choices)
+          ? 'openai-chat-completions-jsonl'
+          : 'openai-chat-messages-jsonl',
         score,
         confidence: score >= 5 ? 'high' : 'medium',
       };
@@ -75,10 +110,14 @@ export function detectOpenAIRecord(value: unknown): AdapterDetection | null {
 
 export class OpenAIReviewAdapter extends BaseReviewAdapter {
   private readonly pendingResults = new Map<string, PendingResult>();
-  private readonly seenUsageRecords = new Set<string>();
+  private readonly pendingResultsByCallId = new Map<string, PendingResult[]>();
+  private readonly correlationsByCallId = new Map<string, CallCorrelation[]>();
+  private readonly resultCorrelations = new Map<string, string>();
+  private readonly seenUsageRecords = new Map<string, readonly [number | null, number | null, number | null]>();
   private warnedUnsupportedModernShape = false;
 
   constructor(context: AdapterContext, format = OPENAI_REVIEW_FORMAT) {
+    const optionalMetadataCapability = capabilityLevel(format);
     super({
       harness: 'openai',
       adapterVersion: '1',
@@ -88,8 +127,8 @@ export class OpenAIReviewAdapter extends BaseReviewAdapter {
       capabilities: {
         toolCalls: 'structured',
         toolResults: 'structured',
-        timestamps: 'structured',
-        usage: 'structured',
+        timestamps: optionalMetadataCapability,
+        usage: optionalMetadataCapability,
         mutations: 'heuristic',
         skillActivation: 'unavailable',
       },
@@ -192,22 +231,31 @@ export class OpenAIReviewAdapter extends BaseReviewAdapter {
     const usage = objectValue(record.usage);
     if (!usage) return;
     const stableId = stringValue(record.id);
-    const key = stableId ? `record:${stableId}` : `line:${located.line}`;
-    if (this.seenUsageRecords.has(key)) return;
-    this.seenUsageRecords.add(key);
-    this.addUsage(
-      usage.prompt_tokens ?? usage.input_tokens ?? usage.inputTokens,
-      usage.completion_tokens ?? usage.output_tokens ?? usage.outputTokens,
-      objectValue(usage.prompt_tokens_details)?.cached_tokens
+    const wrapperId = Array.isArray(record.messages)
+      ? stringValue(record.session_id, record.sessionId) ?? this.context.fallbackSessionId
+      : null;
+    const key = stableId ? `record:${stableId}` : wrapperId ? `messages:${wrapperId}` : `line:${located.line}`;
+    const next = [
+      finiteTokenCount(usage.prompt_tokens ?? usage.input_tokens ?? usage.inputTokens),
+      finiteTokenCount(usage.completion_tokens ?? usage.output_tokens ?? usage.outputTokens),
+      finiteTokenCount(objectValue(usage.prompt_tokens_details)?.cached_tokens
         ?? usage.cached_input_tokens
-        ?? usage.cachedInputTokens,
-    );
+        ?? usage.cachedInputTokens),
+    ] as const;
+    const previous = this.seenUsageRecords.get(key);
+    this.seenUsageRecords.set(key, next);
+    const delta = next.map((value, index) => {
+      if (value === null) return null;
+      const prior = previous?.[index];
+      return prior === null || prior === undefined ? value : Math.max(0, value - prior);
+    });
+    this.addUsage(delta[0], delta[1], delta[2]);
   }
 
   private captureMessage(message: Record<string, any>, located: LocatedRecord, context: MessageContext): void {
     this.noteRecordTimestamp(context.timestamp);
     if (message.role === 'assistant') this.captureToolCalls(message, located, context);
-    if (message.role === 'tool' || message.role === 'function') this.captureToolResult(message, located);
+    if (message.role === 'tool' || message.role === 'function') this.captureToolResult(message, located, context);
   }
 
   private captureToolCalls(message: Record<string, any>, located: LocatedRecord, context: MessageContext): void {
@@ -219,22 +267,39 @@ export class OpenAIReviewAdapter extends BaseReviewAdapter {
       const toolName = stringValue(fn.name, call.name) ?? 'unknown';
       const input = this.parseArguments(fn.arguments ?? call.arguments, located);
       const callId = stringValue(call.id, call.tool_call_id);
+      const correlationId = callId ? `${context.scope}:call:${callId}` : null;
       const fallbackKey = context.cumulative
         ? `${context.scope}:tool:${index}:${toolName}:${stableCanonicalize(input)}`
         : null;
       const event = this.addEvent(located, {
-        eventId: callId ?? `${context.scope}:tool:${index}`,
-        dedupeKey: callId ? `call:${callId}` : fallbackKey,
+        eventId: correlationId ?? `${context.scope}:tool:${index}`,
+        dedupeKey: correlationId ?? fallbackKey,
+        correlationId,
         timestamp: call.timestamp ?? context.timestamp,
         toolName,
         input,
         callId,
       });
       if (event && callId) {
-        const pending = this.pendingResults.get(callId);
+        const correlation: CallCorrelation = {
+          correlationId: correlationId!,
+          group: messageGroup(context.scope),
+          hasResult: false,
+        };
+        const correlations = this.correlationsByCallId.get(callId) ?? [];
+        correlations.push(correlation);
+        this.correlationsByCallId.set(callId, correlations);
+        const pending = this.pendingResults.get(correlationId!);
         if (pending) {
-          this.updateResult(callId, pending.outcome, pending.result);
-          this.pendingResults.delete(callId);
+          this.updateResult(correlationId!, pending.outcome, pending.result, pending.located);
+          correlation.hasResult = true;
+          this.pendingResults.delete(correlationId!);
+        } else {
+          const unscoped = this.pendingResultsByCallId.get(callId)?.shift();
+          if (unscoped) {
+            this.updateResult(correlationId!, unscoped.outcome, unscoped.result, unscoped.located);
+            correlation.hasResult = true;
+          }
         }
       }
     });
@@ -256,7 +321,11 @@ export class OpenAIReviewAdapter extends BaseReviewAdapter {
     }
   }
 
-  private captureToolResult(message: Record<string, any>, located: LocatedRecord): void {
+  private captureToolResult(
+    message: Record<string, any>,
+    located: LocatedRecord,
+    context: MessageContext,
+  ): void {
     const callId = stringValue(message.tool_call_id, message.toolCallId, message.call_id, message.callId);
     if (!callId) {
       this.addDiagnostic({
@@ -267,9 +336,33 @@ export class OpenAIReviewAdapter extends BaseReviewAdapter {
       });
       return;
     }
-    const pending = { outcome: explicitOutcome(message), result: message.content ?? message.output };
-    if (!this.updateResult(callId, pending.outcome, pending.result)) {
-      this.pendingResults.set(callId, pending);
+    const pending: PendingResult = {
+      outcome: explicitOutcome(message),
+      result: message.content ?? message.output,
+      located,
+    };
+    const resultKey = `${context.scope}:result:${callId}`;
+    let correlationId = this.resultCorrelations.get(resultKey);
+    if (!correlationId) {
+      const correlations = this.correlationsByCallId.get(callId) ?? [];
+      const group = messageGroup(context.scope);
+      const sameGroup = [...correlations].reverse().find((candidate) =>
+        candidate.group === group && !candidate.hasResult);
+      const unmatched = [...correlations].reverse().find((candidate) => !candidate.hasResult);
+      const candidate = sameGroup ?? unmatched ?? [...correlations].reverse().find((item) => item.group === group)
+        ?? correlations.at(-1);
+      correlationId = candidate?.correlationId;
+      if (candidate) candidate.hasResult = true;
+      if (correlationId) this.resultCorrelations.set(resultKey, correlationId);
+    }
+    if (correlationId) {
+      if (!this.updateResult(correlationId, pending.outcome, pending.result, located)) {
+        this.pendingResults.set(correlationId, pending);
+      }
+    } else {
+      const queued = this.pendingResultsByCallId.get(callId) ?? [];
+      queued.push(pending);
+      this.pendingResultsByCallId.set(callId, queued);
     }
   }
 }

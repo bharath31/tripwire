@@ -96,7 +96,9 @@ export interface NormalizedEvent {
   operationConfidence: Confidence;
   state: OperationState;
   activation: SkillActivation | null;
+  /** The call record; outcome/result evidence may live on a later record. */
   evidence: EvidenceRef;
+  resultEvidence: EvidenceRef | null;
 }
 
 export type ParseDiagnosticCode =

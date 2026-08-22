@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ingestTranscript,
@@ -65,6 +65,7 @@ describe('bounded review ingestion', () => {
     });
     expect(session.events[0].result.sizeBytes).toBeGreaterThan(0);
     expect(session.events[0].result.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(session.events[0].resultEvidence).toMatchObject({ line: 2, sessionId: 'session-a' });
     expect(session.events[0].signature.subject).toBe('./a.ts');
     expect(session.usage).toEqual({ inputTokens: 10, outputTokens: 2, cachedInputTokens: 3 });
   });
@@ -74,7 +75,105 @@ describe('bounded review ingestion', () => {
     const second = await fixture('second.jsonl', [claudeCall('second')]);
     const sessions = await ingestTranscripts([second, first]);
 
-    expect(sessions.map((session) => session.source.path)).toEqual([second, first]);
+    expect(sessions.map((session) => session.source.path)).toEqual([
+      await realpath(second),
+      await realpath(first),
+    ]);
+  });
+
+  it('deduplicates repeated explicit paths and symlink aliases of the same transcript', async () => {
+    const original = await fixture('original.jsonl', [claudeCall('one')]);
+    const alias = join(dirname(original), 'alias.jsonl');
+    await symlink(original, alias);
+
+    const sessions = await ingestTranscripts([original, alias, original]);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].source.path).toBe(await realpath(original));
+  });
+
+  it('finds supported OpenAI evidence after more than the initial neutral-record window', async () => {
+    const neutral = Array.from({ length: 41 }, (_, sequence) => ({ type: 'metadata', sequence }));
+    const path = await fixture('late-openai.jsonl', [
+      ...neutral,
+      {
+        role: 'assistant',
+        tool_calls: [{
+          id: 'call-late',
+          type: 'function',
+          function: { name: 'read_file', arguments: '{"path":"README.md"}' },
+        }],
+      },
+      { role: 'tool', tool_call_id: 'call-late', status: 'success', content: 'ok' },
+    ]);
+
+    const session = await ingestTranscript(path);
+
+    expect(session.adapter.harness).toBe('openai');
+    expect(session.events).toHaveLength(1);
+    expect(session.events[0]).toMatchObject({ toolName: 'read_file', outcome: 'success' });
+  });
+
+  it('rejects an ambiguous mixture of Codex and Gemini records', async () => {
+    const path = await fixture('mixed.jsonl', [
+      {
+        type: 'item.completed',
+        item: { id: 'codex-call', type: 'web_search', query: 'documentation', status: 'completed' },
+      },
+      { type: 'tool_result', tool_id: 'gemini-call', status: 'success', output: 'ok' },
+    ]);
+
+    await expect(ingestTranscript(path)).rejects.toMatchObject({ code: 'unsupported-format' });
+  });
+
+  it('reports streaming Chat Completion chunks with actionable format guidance', async () => {
+    const path = await fixture('streaming-openai.jsonl', [{
+      id: 'completion-stream',
+      object: 'chat.completion.chunk',
+      choices: [{ delta: { tool_calls: [] } }],
+    }]);
+    let caught: unknown;
+    try {
+      await ingestTranscript(path);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ReviewInputError);
+    expect(caught).toMatchObject({ code: 'unsupported-format' });
+    expect((caught as Error).message).toMatch(/streaming Chat Completions/i);
+    expect((caught as Error).message).toMatch(/completed messages/i);
+  });
+
+  it('keeps call and result evidence on their exact source lines', async () => {
+    const path = await fixture('evidence-lines.jsonl', [
+      { type: 'metadata' },
+      claudeCall('located-call'),
+      { type: 'progress' },
+      claudeResult('located-call'),
+    ]);
+
+    const session = await ingestTranscript(path);
+
+    expect(session.events[0].evidence.line).toBe(2);
+    expect(session.events[0].resultEvidence?.line).toBe(4);
+  });
+
+  it('ingests pretty-printed Gemini saved-session JSON as one bounded document', async () => {
+    const savedSession = {
+      sessionId: 'gemini-session',
+      projectHash: 'project-hash',
+      messages: [{
+        type: 'gemini',
+        toolCalls: [{ id: 'call-1', name: 'read_file', args: { path: '/repo/a.ts' }, status: 'success' }],
+      }],
+    };
+    const path = await fixture('session-pretty.json', [JSON.stringify(savedSession, null, 2)]);
+    const session = await ingestTranscript(path);
+
+    expect(session.adapter.harness).toBe('gemini-cli');
+    expect(session.events).toHaveLength(1);
+    expect(session.events[0]).toMatchObject({ toolName: 'read_file', outcome: 'success' });
   });
 
   it('warns before processing an unusually large but permitted file', async () => {
