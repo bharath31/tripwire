@@ -1,5 +1,5 @@
 import { BaseReviewAdapter, recordObject, timestampOf } from './base.js';
-import type { AdapterContext, LocatedRecord } from './types.js';
+import type { AdapterContext, AdapterOutput, LocatedRecord } from './types.js';
 import type { AdapterCapabilities, AdapterIdentity, SkillActivation, ToolOutcome } from '../types.js';
 
 const ADAPTER_VERSION = '1';
@@ -31,6 +31,12 @@ function explicitOutcome(value: Record<string, any>): ToolOutcome {
   return 'unknown';
 }
 
+function diagnosticType(value: unknown): string {
+  if (typeof value !== 'string') return value === undefined || value === null ? 'missing' : typeof value;
+  const sanitized = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?').slice(0, 120);
+  return sanitized || 'missing';
+}
+
 function objectValue(value: unknown): Record<string, any> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, any>
@@ -46,10 +52,15 @@ function activationFor(toolName: string, input: unknown): SkillActivation | null
 
 function usageFields(value: Record<string, any>): [unknown, unknown, unknown] {
   return [
-    value.input_tokens ?? value.inputTokens ?? value.prompt_tokens ?? value.promptTokenCount,
-    value.output_tokens ?? value.outputTokens ?? value.candidates_tokens ?? value.candidatesTokenCount,
-    value.cached_input_tokens ?? value.cachedInputTokens ?? value.cached_tokens ?? value.cachedContentTokenCount,
+    value.input_tokens ?? value.inputTokens ?? value.prompt_tokens ?? value.promptTokenCount ?? value.input,
+    value.output_tokens ?? value.outputTokens ?? value.candidates_tokens ?? value.candidatesTokenCount ?? value.output,
+    value.cached_input_tokens ?? value.cachedInputTokens ?? value.cached_tokens ?? value.cachedContentTokenCount ?? value.cached,
   ];
+}
+
+interface BufferedSavedMessage {
+  message: Record<string, any>;
+  record: LocatedRecord;
 }
 
 interface SavedToolCall {
@@ -79,6 +90,10 @@ function normalizeSavedToolCall(raw: Record<string, any>, fallbackTimestamp: unk
 
 /** Review adapter for Gemini stream-json and saved-session JSON records. */
 export class GeminiCliReviewAdapter extends BaseReviewAdapter {
+  private readonly savedMessages = new Map<string, BufferedSavedMessage>();
+  private readonly savedMessageOrder: string[] = [];
+  private savedMessagesMaterialized = false;
+
   constructor(context: AdapterContext, format = 'gemini-json') {
     const identity: AdapterIdentity = {
       harness: 'gemini-cli',
@@ -97,12 +112,29 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
       this.markUnsupported(record, 'Gemini record is not a JSON object.');
       return;
     }
-    this.noteTimestamp(timestampOf(object.timestamp ?? object.createdAt));
+    const metadataUpdate = objectValue(object.$set);
+    if (metadataUpdate) {
+      this.handleSavedMetadata(record, metadataUpdate);
+      if (Array.isArray(metadataUpdate.messages)) this.replaceSavedMessages(record, metadataUpdate.messages);
+      return;
+    }
+
+    if (typeof object.$rewindTo === 'string') {
+      this.rewindSavedMessages(object.$rewindTo);
+      return;
+    }
 
     if (Array.isArray(object.messages) || object.sessionId || object.session_id) {
       this.handleSavedSession(record, object);
       return;
     }
+
+    if (typeof object.id === 'string' && ['message', 'user', 'gemini', 'info', 'error', 'warning'].includes(String(object.type))) {
+      this.bufferSavedMessage(record, object);
+      return;
+    }
+
+    this.noteTimestamp(timestampOf(object.timestamp ?? object.createdAt));
 
     switch (object.type) {
       case 'init':
@@ -132,11 +164,27 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
         this.handleSavedMessage(record, object);
         return;
       default:
-        this.markUnsupported(record, `Unsupported Gemini record type: ${String(object.type ?? 'missing')}`);
+        this.markUnsupported(record, `Unsupported Gemini record type: ${diagnosticType(object.type)}`);
     }
   }
 
+  override finish(): AdapterOutput {
+    if (!this.savedMessagesMaterialized) {
+      for (const id of this.savedMessageOrder) {
+        const buffered = this.savedMessages.get(id);
+        if (buffered) this.handleSavedMessage(buffered.record, buffered.message);
+      }
+      this.savedMessagesMaterialized = true;
+    }
+    return super.finish();
+  }
+
   private handleSavedSession(record: LocatedRecord, session: Record<string, any>): void {
+    this.handleSavedMetadata(record, session);
+    if (Array.isArray(session.messages)) this.replaceSavedMessages(record, session.messages);
+  }
+
+  private handleSavedMetadata(_record: LocatedRecord, session: Record<string, any>): void {
     const metadata = objectValue(session.metadata) ?? {};
     const previous = stringValue(
       session.continuedFromSessionId,
@@ -150,8 +198,14 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
       session.logicalSessionId ?? metadata.logicalSessionId ?? previous ?? sessionId,
     );
     this.setContinuation(previous);
+    const directories = Array.isArray(session.directories)
+      ? session.directories
+      : Array.isArray(metadata.directories)
+        ? metadata.directories
+        : [];
     this.setProject(
-      session.projectPath ?? session.cwd ?? metadata.projectPath ?? metadata.cwd,
+      session.projectPath ?? session.cwd ?? metadata.projectPath ?? metadata.cwd
+        ?? directories.find((value: unknown) => typeof value === 'string'),
       session.projectHash ?? session.projectId ?? metadata.projectHash ?? metadata.projectId,
     );
     const version = stringValue(session.version, session.formatVersion, metadata.version, metadata.cliVersion);
@@ -159,13 +213,47 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
     this.noteTimestamp(timestampOf(session.startTime ?? session.createdAt ?? metadata.startTime));
     this.noteTimestamp(timestampOf(session.lastUpdated ?? session.updatedAt ?? metadata.lastUpdated));
     this.readUsage(session.usage ?? session.tokens ?? metadata.usage);
+  }
 
-    if (Array.isArray(session.messages)) {
-      for (const rawMessage of session.messages) {
-        const message = objectValue(rawMessage);
-        if (message) this.handleSavedMessage(record, message);
+  private replaceSavedMessages(record: LocatedRecord, rawMessages: unknown[]): void {
+    this.savedMessages.clear();
+    this.savedMessageOrder.length = 0;
+    rawMessages.forEach((rawMessage, index) => {
+      const message = objectValue(rawMessage);
+      if (message) this.bufferSavedMessage(record, message, `checkpoint:${record.line}:${index}`);
+    });
+  }
+
+  private bufferSavedMessage(record: LocatedRecord, message: Record<string, any>, fallbackId?: string): void {
+    const id = stringValue(message.id) ?? fallbackId ?? `line:${record.line}`;
+    if (!this.savedMessages.has(id)) this.savedMessageOrder.push(id);
+    this.savedMessages.set(id, { message, record });
+  }
+
+  private rewindSavedMessages(messageId: string): void {
+    const index = this.savedMessageOrder.indexOf(messageId);
+    const removed = index >= 0
+      ? this.savedMessageOrder.splice(index)
+      : this.savedMessageOrder.splice(0);
+    for (const id of removed) this.savedMessages.delete(id);
+  }
+
+  private mergeResult(callId: string, outcome: ToolOutcome, result: unknown, record: LocatedRecord): boolean {
+    const existing = this.events.find((event) => event.callId === callId);
+    if (!existing) return false;
+    const mergedOutcome = outcome === 'unknown' ? existing.outcome : outcome;
+    if (result === undefined) {
+      if (outcome !== 'unknown') {
+        existing.outcome = outcome;
+        existing.resultLocation = {
+          line: record.line,
+          byteStart: record.byteStart,
+          byteEnd: record.byteEnd,
+        };
       }
+      return true;
     }
+    return this.updateResult(callId, mergedOutcome, result, record);
   }
 
   private handleSavedMessage(record: LocatedRecord, message: Record<string, any>): void {
@@ -204,7 +292,7 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
   }
 
   private addToolCall(record: LocatedRecord, call: SavedToolCall): void {
-    if (call.id && this.updateResult(call.id, call.outcome, call.result)) {
+    if (call.id && this.mergeResult(call.id, call.outcome, call.result, record)) {
       this.noteTimestamp(timestampOf(call.timestamp));
       return;
     }
@@ -234,7 +322,7 @@ export class GeminiCliReviewAdapter extends BaseReviewAdapter {
     const callId = stringValue(value.tool_id, value.toolCallId, value.tool_call_id, value.id);
     const result = value.output ?? value.result ?? value.response;
     const outcome = explicitOutcome(value);
-    if (!callId || !this.updateResult(callId, outcome, result)) {
+    if (!callId || !this.mergeResult(callId, outcome, result, record)) {
       this.addDiagnostic({
         code: 'unsupported-signal',
         severity: 'warning',

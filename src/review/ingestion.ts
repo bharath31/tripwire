@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { constants } from 'node:fs';
+import { open, realpath } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
+import { extname, resolve } from 'node:path';
 import { buildSemanticSignature } from './semantic-signature.js';
 import { REVIEW_SCHEMA_VERSION, type NormalizedSession, type ParseDiagnostic } from './types.js';
 import { createAdapter, detectAdapter, type AdapterDetection, type LocatedRecord, type ReviewAdapter } from './adapters/index.js';
@@ -26,6 +27,7 @@ export type ReviewInputErrorCode =
   | 'unsupported-format'
   | 'substantially-malformed'
   | 'no-tool-calls'
+  | 'changed-during-read'
   | 'aborted';
 
 export class ReviewInputError extends Error {
@@ -54,6 +56,10 @@ interface JsonLine {
   byteEnd: number;
 }
 
+interface ReadState {
+  bytesRead: number;
+}
+
 function sourceDigest(domain: string, value: string): string {
   return createHash('sha256').update(`tripwire-review-${domain}:v1\0${value}`).digest('hex');
 }
@@ -73,19 +79,30 @@ function mergedLimits(options: IngestionOptions) {
 }
 
 async function* streamLines(
+  file: FileHandle,
   sourcePath: string,
+  maxFileBytes: number,
   maxLineBytes: number,
+  state: ReadState,
   signal?: AbortSignal,
 ): AsyncGenerator<JsonLine> {
-  const input = createReadStream(sourcePath, { highWaterMark: 64 * 1024, signal });
+  const input = file.createReadStream({ highWaterMark: 64 * 1024, signal, autoClose: false });
   let carry = Buffer.alloc(0);
   let bytesRead = 0;
   let line = 0;
 
   for await (const value of input) {
     const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    if (bytesRead + chunk.length > maxFileBytes) {
+      throw new ReviewInputError(
+        'oversized',
+        sourcePath,
+        `transcript grew beyond the configured ${maxFileBytes}-byte maximum while it was being read`,
+      );
+    }
     const baseOffset = bytesRead - carry.length;
     bytesRead += chunk.length;
+    state.bytesRead = bytesRead;
     const data = carry.length === 0 ? chunk : Buffer.concat([carry, chunk]);
     let start = 0;
     let newline: number;
@@ -131,6 +148,33 @@ async function* streamLines(
   }
 }
 
+async function* streamJsonDocument(
+  file: FileHandle,
+  sourcePath: string,
+  maxFileBytes: number,
+  state: ReadState,
+  signal?: AbortSignal,
+): AsyncGenerator<JsonLine> {
+  const input = file.createReadStream({ highWaterMark: 64 * 1024, signal, autoClose: false });
+  const chunks: Buffer[] = [];
+  let bytesRead = 0;
+  for await (const value of input) {
+    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    bytesRead += chunk.length;
+    state.bytesRead = bytesRead;
+    if (bytesRead > maxFileBytes) {
+      throw new ReviewInputError(
+        'oversized',
+        sourcePath,
+        `transcript grew beyond the configured ${maxFileBytes}-byte maximum while it was being read`,
+      );
+    }
+    chunks.push(chunk);
+  }
+  const document = Buffer.concat(chunks, bytesRead);
+  yield { raw: document.toString('utf8'), line: 1, byteStart: 0, byteEnd: bytesRead };
+}
+
 function actionableError(error: unknown, sourcePath: string): ReviewInputError {
   if (error instanceof ReviewInputError) return error;
   if (error instanceof Error && error.name === 'AbortError') {
@@ -152,21 +196,38 @@ function malformedError(sourcePath: string, invalid: number, records: number): R
 }
 
 export async function ingestTranscript(path: string, options: IngestionOptions = {}): Promise<NormalizedSession> {
-  const sourcePath = resolve(path);
-  const limits = mergedLimits(options);
-  let file;
+  const requestedPath = resolve(path);
+  let sourcePath: string;
   try {
-    file = await stat(sourcePath);
+    sourcePath = await realpath(requestedPath);
+  } catch (error) {
+    throw actionableError(error, requestedPath);
+  }
+  const limits = mergedLimits(options);
+  let sourceFile: FileHandle;
+  try {
+    const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0;
+    sourceFile = await open(sourcePath, constants.O_RDONLY | noFollow);
   } catch (error) {
     throw actionableError(error, sourcePath);
   }
+  let file;
+  try {
+    file = await sourceFile.stat();
+  } catch (error) {
+    await sourceFile.close().catch(() => undefined);
+    throw actionableError(error, sourcePath);
+  }
   if (!file.isFile()) {
+    await sourceFile.close().catch(() => undefined);
     throw new ReviewInputError('not-a-file', sourcePath, `transcript path is not a regular file: ${sourcePath}`);
   }
   if (file.size === 0) {
+    await sourceFile.close().catch(() => undefined);
     throw new ReviewInputError('empty', sourcePath, `transcript is empty: ${sourcePath}`);
   }
   if (file.size > limits.maxFileBytes) {
+    await sourceFile.close().catch(() => undefined);
     throw new ReviewInputError(
       'oversized',
       sourcePath,
@@ -174,12 +235,22 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
     );
   }
   if (file.size >= limits.warnFileBytes) {
-    options.onWarning?.(
-      `large transcript (${file.size} bytes): processing locally with bounded event and line retention`,
-    );
+    try {
+      options.onWarning?.(
+        `large transcript (${file.size} bytes): processing locally with bounded event and line retention`,
+      );
+    } catch (error) {
+      await sourceFile.close().catch(() => undefined);
+      throw error;
+    }
   }
 
-  const sourceId = sourceDigest('source', `${sourcePath}\0${file.size}\0${file.mtimeMs}`);
+  const openedFile = file;
+
+  const sourceId = sourceDigest(
+    'source',
+    `${sourcePath}\0${String(file.dev)}\0${String(file.ino)}\0${file.size}\0${file.mtimeMs}`,
+  );
   const fallbackSessionId = sourceDigest('session', sourceId).slice(0, 32);
   const detectionBuffer: LocatedRecord[] = [];
   const ingestionDiagnostics: ParseDiagnostic[] = [];
@@ -188,6 +259,8 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
   let nonEmptyLines = 0;
   let recordsSeen = 0;
   let invalidRecords = 0;
+  const jsonDocument = extname(sourcePath).toLowerCase() === '.json';
+  const readState: ReadState = { bytesRead: 0 };
 
   const noteInvalid = (line: number) => {
     invalidRecords += 1;
@@ -201,14 +274,31 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
     }
   };
 
-  const startAdapter = () => {
+  const startAdapter = (final = false) => {
     detection = detectAdapter(detectionBuffer);
     if (!detection) return false;
     if (detection.format.endsWith('-unsupported')) {
+      if (!final) {
+        detection = null;
+        return false;
+      }
       throw new ReviewInputError(
         'unsupported-format',
         sourcePath,
-        'OpenAI Responses/Agents traces are not supported; provide documented Chat Completions or role/tool-call JSONL',
+        detection.format === 'openai-chat-completions-unsupported'
+          ? 'streaming Chat Completions chunks are not supported; provide completed messages or role/tool-call JSONL'
+          : 'OpenAI Responses/Agents traces are not supported; provide documented Chat Completions or role/tool-call JSONL',
+      );
+    }
+    if (detection.confidence === 'low') {
+      if (!final) {
+        detection = null;
+        return false;
+      }
+      throw new ReviewInputError(
+        'unsupported-format',
+        sourcePath,
+        'ambiguous transcript format; provide a transcript containing consistent records from one supported harness',
       );
     }
     adapterState.current = createAdapter(detection, {
@@ -223,7 +313,17 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
   };
 
   try {
-    for await (const jsonLine of streamLines(sourcePath, limits.maxLineBytes, options.signal)) {
+    const input = jsonDocument
+      ? streamJsonDocument(sourceFile, sourcePath, limits.maxFileBytes, readState, options.signal)
+      : streamLines(
+          sourceFile,
+          sourcePath,
+          limits.maxFileBytes,
+          limits.maxLineBytes,
+          readState,
+          options.signal,
+        );
+    for await (const jsonLine of input) {
       const raw = jsonLine.raw.trim();
       if (raw === '') continue;
       nonEmptyLines += 1;
@@ -232,6 +332,7 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
       try {
         value = JSON.parse(raw);
       } catch {
+        if (jsonDocument) throw malformedError(sourcePath, 1, 1);
         noteInvalid(jsonLine.line);
         continue;
       }
@@ -245,16 +346,36 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
       else {
         detectionBuffer.push(located);
         if (detectionBuffer.length >= limits.detectionRecords && !startAdapter()) {
-          throw new ReviewInputError(
-            'unsupported-format',
-            sourcePath,
-            'unsupported transcript format; expected Claude Code, Codex CLI, Gemini CLI, or documented OpenAI tool-call JSONL',
-          );
+          // Preserve early metadata plus a rolling window so late tool evidence can
+          // identify the format without retaining an unbounded neutral prefix.
+          const firstRollingIndex = Math.floor(limits.detectionRecords / 2);
+          detectionBuffer.splice(firstRollingIndex, 1);
         }
       }
     }
   } catch (error) {
+    await sourceFile.close().catch(() => undefined);
     throw actionableError(error, sourcePath);
+  }
+
+  try {
+    file = await sourceFile.stat();
+  } catch (error) {
+    await sourceFile.close().catch(() => undefined);
+    throw actionableError(error, sourcePath);
+  }
+  await sourceFile.close().catch(() => undefined);
+  if (
+    file.dev !== openedFile.dev
+    || file.ino !== openedFile.ino
+    || file.size !== readState.bytesRead
+    || file.mtimeMs !== openedFile.mtimeMs
+  ) {
+    throw new ReviewInputError(
+      'changed-during-read',
+      sourcePath,
+      'transcript changed while it was being read; wait for the run to finish and try again',
+    );
   }
 
   if (nonEmptyLines === 0) {
@@ -264,7 +385,7 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
   if (invalidRecords >= limits.substantiallyMalformedMinimum && invalidFraction > limits.maxInvalidFraction) {
     throw malformedError(sourcePath, invalidRecords, recordsSeen);
   }
-  if (!adapterState.current && !startAdapter()) {
+  if (!adapterState.current && !startAdapter(true)) {
     throw new ReviewInputError(
       'unsupported-format',
       sourcePath,
@@ -314,6 +435,17 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
         byteStart: event.byteStart,
         byteEnd: event.byteEnd,
       },
+      resultEvidence: event.resultLocation
+        ? {
+            sourceId,
+            sessionId: finalSessionId,
+            eventId: event.eventId,
+            sequence: event.sequence,
+            line: event.resultLocation.line,
+            byteStart: event.resultLocation.byteStart,
+            byteEnd: event.resultLocation.byteEnd,
+          }
+        : null,
     };
   });
 
@@ -326,7 +458,7 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
     source: {
       id: sourceId,
       path: sourcePath,
-      sizeBytes: file.size,
+      sizeBytes: readState.bytesRead,
       modifiedAt: Number.isFinite(file.mtimeMs) ? file.mtime.toISOString() : null,
     },
     project: {
@@ -358,6 +490,12 @@ export async function ingestTranscript(path: string, options: IngestionOptions =
 /** Sequential by design: multiple large transcripts must not multiply peak memory. */
 export async function ingestTranscripts(paths: string[], options: IngestionOptions = {}): Promise<NormalizedSession[]> {
   const sessions: NormalizedSession[] = [];
-  for (const path of paths) sessions.push(await ingestTranscript(path, options));
+  const seenSources = new Set<string>();
+  for (const path of paths) {
+    const session = await ingestTranscript(path, options);
+    if (seenSources.has(session.source.path)) continue;
+    seenSources.add(session.source.path);
+    sessions.push(session);
+  }
   return sessions;
 }

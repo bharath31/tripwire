@@ -17,6 +17,8 @@ import type {
 interface AddEventOptions {
   eventId?: string | null;
   dedupeKey?: string | null;
+  /** Internal call/result correlation key; may be more specific than the raw call ID. */
+  correlationId?: string | null;
   timestamp?: unknown;
   kind?: AdapterEvent['kind'];
   toolName: string;
@@ -58,7 +60,7 @@ export abstract class BaseReviewAdapter implements ReviewAdapter {
   protected metadata: AdapterSessionMetadata;
   private eventsSeen = 0;
   private droppedEvents = 0;
-  private readonly eventIndexByCallId = new Map<string, number>();
+  private readonly eventIndexByCorrelationId = new Map<string, number>();
   private readonly seenEventKeys = new Set<string>();
 
   constructor(identity: AdapterIdentity, context: AdapterContext) {
@@ -82,6 +84,7 @@ export abstract class BaseReviewAdapter implements ReviewAdapter {
 
   protected addEvent(record: LocatedRecord, options: AddEventOptions): AdapterEvent | null {
     const callId = options.callId ?? null;
+    const correlationId = options.correlationId ?? callId;
     const dedupeKey = options.dedupeKey ?? (callId ? `call:${callId}` : null);
     if (dedupeKey && this.seenEventKeys.has(dedupeKey)) return null;
     if (dedupeKey) this.seenEventKeys.add(dedupeKey);
@@ -117,19 +120,35 @@ export abstract class BaseReviewAdapter implements ReviewAdapter {
       line: record.line,
       byteStart: record.byteStart,
       byteEnd: record.byteEnd,
+      resultLocation: (options.outcome !== undefined && options.outcome !== 'unknown') || options.result !== undefined
+        ? { line: record.line, byteStart: record.byteStart, byteEnd: record.byteEnd }
+        : null,
     };
     this.events.push(event);
-    if (callId) this.eventIndexByCallId.set(callId, sequence);
+    if (correlationId) this.eventIndexByCorrelationId.set(correlationId, sequence);
     return event;
   }
 
-  protected updateResult(callId: unknown, outcome: ToolOutcome, result?: unknown): boolean {
-    if (typeof callId !== 'string' || callId === '') return false;
-    const index = this.eventIndexByCallId.get(callId);
+  protected updateResult(
+    correlationId: unknown,
+    outcome: ToolOutcome,
+    result?: unknown,
+    record?: LocatedRecord,
+  ): boolean {
+    if (typeof correlationId !== 'string' || correlationId === '') return false;
+    const index = this.eventIndexByCorrelationId.get(correlationId);
     if (index === undefined) return false;
+    if (outcome === 'unknown' && result === undefined) return true;
     const event = this.events[index];
     event.outcome = outcome;
     event.result = resultSummary(result);
+    if (record) {
+      event.resultLocation = {
+        line: record.line,
+        byteStart: record.byteStart,
+        byteEnd: record.byteEnd,
+      };
+    }
     return true;
   }
 

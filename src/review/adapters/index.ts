@@ -61,7 +61,9 @@ export function detectAdapter(records: LocatedRecord[]): AdapterDetection | null
       add('gemini-cli', 'gemini-session-jsonl', type === 'gemini' ? 4 : 1);
     }
 
-    if (Array.isArray(value.choices) || value.object === 'chat.completion' || value.object === 'chat.completion.chunk') {
+    if (value.object === 'chat.completion.chunk') {
+      add('openai', 'openai-chat-completions-unsupported', 7);
+    } else if (Array.isArray(value.choices) || value.object === 'chat.completion') {
       add('openai', 'openai-chat-completions-jsonl', 5);
     }
     if (Array.isArray(value.messages)) add('openai', 'openai-chat-messages-jsonl', 2);
@@ -79,7 +81,7 @@ export function detectAdapter(records: LocatedRecord[]): AdapterDetection | null
   const runnerUp = ranked[1]?.score ?? 0;
   const confidence = best.score >= 8 && best.score - runnerUp >= 3
     ? 'high'
-    : best.score >= 4 && best.score > runnerUp ? 'medium' : 'low';
+    : best.score > runnerUp && (runnerUp === 0 || best.score - runnerUp >= 2) ? 'medium' : 'low';
   return { ...best, confidence };
 }
 

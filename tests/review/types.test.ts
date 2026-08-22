@@ -60,6 +60,7 @@ describe('normalized review contracts', () => {
           sequence: 0,
           line: 3,
         },
+        resultEvidence: null,
       }],
       diagnostics: [{
         code: 'unsupported-signal',

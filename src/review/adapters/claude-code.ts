@@ -13,6 +13,7 @@ export const CLAUDE_CODE_REVIEW_FORMAT = 'claude-code-jsonl';
 interface PendingResult {
   outcome: ToolOutcome;
   result: unknown;
+  record: LocatedRecord;
 }
 
 function objectValue(value: unknown): Record<string, any> | null {
@@ -204,7 +205,7 @@ export class ClaudeCodeReviewAdapter extends BaseReviewAdapter {
       if (event && callId) {
         const pending = this.pendingResults.get(callId);
         if (pending) {
-          this.updateResult(callId, pending.outcome, pending.result);
+          this.updateResult(callId, pending.outcome, pending.result, pending.record);
           this.pendingResults.delete(callId);
         }
       }
@@ -234,8 +235,8 @@ export class ClaudeCodeReviewAdapter extends BaseReviewAdapter {
         });
         continue;
       }
-      const pending = { outcome: toolOutcome(block), result: block.content };
-      if (!this.updateResult(callId, pending.outcome, pending.result)) {
+      const pending = { outcome: toolOutcome(block), result: block.content, record: located };
+      if (!this.updateResult(callId, pending.outcome, pending.result, located)) {
         this.pendingResults.set(callId, pending);
       }
     }
