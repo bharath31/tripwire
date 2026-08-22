@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { ScenariosFile, AgentAdapter, TranscriptResult } from '../../src/types.js';
 import { runScenariosFromFile } from '../../src/test/scenario-runner.js';
 

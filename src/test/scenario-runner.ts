@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { AgentAdapter, ProbeResult, ProbeZone, Scenario } from '../types.js';
 import { mapConcurrent } from '../concurrency.js';
 
 const ZONES = new Set<ProbeZone>(['core', 'adjacent', 'negative', 'variants']);
 
 function parseScenarios(raw: string): Scenario[] {
-  const loaded = yaml.load(raw, { schema: yaml.DEFAULT_SCHEMA });
+  const loaded = yaml.load(raw);
   if (!loaded || typeof loaded !== 'object' || !Array.isArray((loaded as { scenarios?: unknown }).scenarios)) {
     throw new Error('Invalid scenarios file: expected a top-level `scenarios` array');
   }

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { Config } from './types.js';
 import { findTripwireConfig } from './config-path.js';
 
@@ -16,8 +16,7 @@ export async function loadConfig(cwd: string = process.cwd()): Promise<Config> {
   if (!configPath) return structuredClone(defaultConfig);
 
   const raw = await readFile(configPath, 'utf-8');
-  // js-yaml v4 load() is safe by default; schema: DEFAULT_SCHEMA makes intent explicit.
-  const value = yaml.load(raw, { schema: yaml.DEFAULT_SCHEMA });
+  const value = yaml.load(raw);
   if (value == null) return structuredClone(defaultConfig);
   if (typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid ${configPath}: expected a YAML mapping`);

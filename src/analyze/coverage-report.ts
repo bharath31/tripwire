@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { ProbeResult, LintResult, CoverageReport, ScenariosFile, ProbeZone } from '../types.js';
 import { expectedActivationFor } from '../expectation.js';
 

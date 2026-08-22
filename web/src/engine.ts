@@ -1,4 +1,4 @@
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { lint } from '../../src/lint/rules';
 import type { LintResult } from '../../src/types';
 
@@ -24,7 +24,7 @@ function splitFrontmatter(raw: string): {
   }
   let frontmatter: Record<string, unknown> = {};
   try {
-    const parsed = yaml.load(match[1], { schema: yaml.DEFAULT_SCHEMA });
+    const parsed = yaml.load(match[1]);
     if (parsed && typeof parsed === 'object') {
       frontmatter = parsed as Record<string, unknown>;
     }

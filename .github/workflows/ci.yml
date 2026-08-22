@@ -30,6 +30,12 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:web
+      - name: Install VS Code extension dependencies
+        if: ${{ matrix.node == 20 }}
+        run: npm ci --prefix vscode-extension
+      - name: Verify VS Code extension build
+        if: ${{ matrix.node == 20 }}
+        run: npm run build --prefix vscode-extension
       - run: npm audit --omit=dev
       - run: npm pack --dry-run
       - name: Verify committed Action bundle
