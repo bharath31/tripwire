@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, mkdir, symlink, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, symlink, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
 import { findBinaryOnPath, assertAgentBinaryAvailable } from '../../src/adapters/preflight.js';
@@ -28,14 +28,36 @@ describe('findBinaryOnPath', () => {
     }
   });
 
+  it('rejects a directory that merely has the binary name', async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), 'tripwire-pf-'));
+    try {
+      await mkdir(join(dir, 'claude'));
+      expect(findBinaryOnPath('claude', dir, 'linux')).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a non-executable file on POSIX', async () => {
+    const dir = await mkdtemp(join(os.tmpdir(), 'tripwire-pf-'));
+    try {
+      const file = join(dir, 'claude');
+      await writeFile(file, '#!/bin/sh\n');
+      await chmod(file, 0o644);
+      expect(findBinaryOnPath('claude', dir, 'linux')).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('does not split on ":" on win32 — drive letters must survive', async () => {
     const dir = await mkdtemp(join(os.tmpdir(), 'tripwire-pf-'));
     try {
       await symlink(process.execPath, join(dir, 'claude.cmd'));
       // A Windows PATH entry "C:\tools" contains ':' — splitting on it would
       // produce "C" and "\tools", neither of which can hold the binary.
-      expect(findBinaryOnPath('claude.cmd', `C:\\tools;${dir}`, 'win32')).toBe(join(dir, 'claude.cmd'));
-      expect(findBinaryOnPath('claude.cmd', `C:\\tools:${dir}`, 'win32')).toBeNull();
+      expect(findBinaryOnPath('claude', `C:\\tools;${dir}`, 'win32')).toBe(join(dir, 'claude.cmd'));
+      expect(findBinaryOnPath('claude', `C:\\tools:${dir}`, 'win32')).toBeNull();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -63,6 +63,16 @@ describe('summarizeDrift', () => {
     expect(summary.skipped).toEqual(skipped);
     expect(summary.hasDrift).toBe(false);
   });
+
+  it('fails when an invalid skill had to be skipped', () => {
+    const summary = summarizeDrift([], [{
+      filePath: 'broken/SKILL.md',
+      reason: 'invalid scenarios',
+      failed: true,
+    }]);
+    expect(summary.hasDrift).toBe(true);
+    expect(renderDriftSummary(summary)).toContain('Drift run incomplete');
+  });
 });
 
 describe('renderDriftSummary', () => {

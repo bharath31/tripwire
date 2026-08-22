@@ -3296,29 +3296,49 @@ async function mapConcurrent(items, concurrency, worker, onProgress = () => {
 
 // src/test/scenario-runner.ts
 var ZONES = /* @__PURE__ */ new Set(["core", "adjacent", "negative", "variants"]);
-function parseScenarios(raw) {
-  const loaded = load(raw);
+function parseScenarios(loaded) {
   if (!loaded || typeof loaded !== "object" || !Array.isArray(loaded.scenarios)) {
     throw new Error("Invalid scenarios file: expected a top-level `scenarios` array");
   }
-  return loaded.scenarios.map((value, index) => {
+  const values = loaded.scenarios;
+  if (values.length === 0) {
+    throw new Error("Invalid scenarios file: `scenarios` must contain at least one entry");
+  }
+  const scenarios = [];
+  const problems = [];
+  values.forEach((value, index) => {
     if (!value || typeof value !== "object") {
-      throw new Error(`Invalid scenario at index ${index}: expected an object`);
+      problems.push(`Invalid scenario at index ${index}: expected an object`);
+      return;
     }
     const candidate = value;
+    let valid = true;
     if (typeof candidate.prompt !== "string" || candidate.prompt.trim() === "") {
-      throw new Error(`Invalid scenario at index ${index}: \`prompt\` must be a non-empty string`);
+      problems.push(`Invalid scenario at index ${index}: \`prompt\` must be a non-empty string`);
+      valid = false;
     }
-    if (typeof candidate.zone !== "string" || !ZONES.has(candidate.zone)) {
-      throw new Error(`Invalid scenario at index ${index}: unknown \`zone\` "${String(candidate.zone)}"`);
+    const validZone = typeof candidate.zone === "string" && ZONES.has(candidate.zone);
+    if (!validZone) {
+      problems.push(`Invalid scenario at index ${index}: unknown \`zone\` "${String(candidate.zone)}"`);
+      valid = false;
     }
-    const expectedActivation = typeof candidate.expectedActivation === "boolean" ? candidate.expectedActivation : candidate.zone !== "negative";
-    return {
-      prompt: candidate.prompt,
-      zone: candidate.zone,
-      expectedActivation
-    };
+    if (candidate.expectedActivation !== void 0 && typeof candidate.expectedActivation !== "boolean") {
+      problems.push(`Invalid scenario at index ${index}: \`expectedActivation\` must be a boolean`);
+      valid = false;
+    }
+    if (valid) {
+      scenarios.push({
+        prompt: candidate.prompt,
+        zone: candidate.zone,
+        expectedActivation: typeof candidate.expectedActivation === "boolean" ? candidate.expectedActivation : candidate.zone !== "negative"
+      });
+    }
   });
+  if (problems.length > 0) {
+    throw new Error(`invalid tripwire-scenarios.yaml:
+  - ${problems.join("\n  - ")}`);
+  }
+  return scenarios;
 }
 async function loadScenariosFile(scenariosPath, expectedSkillName) {
   let raw;
@@ -3352,12 +3372,11 @@ Re-run 'tripwire analyze' on this skill to generate matching scenarios.`
   return {
     skillName: candidate.skillName,
     generatedAt: typeof candidate.generatedAt === "string" ? candidate.generatedAt : "",
-    scenarios: parseScenarios(raw)
+    scenarios: parseScenarios(doc)
   };
 }
-async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3, expectedSkillName) {
-  const file = await loadScenariosFile(scenariosPath, expectedSkillName);
-  return mapConcurrent(file.scenarios, concurrency, async (s) => {
+async function runScenarios(scenarios, adapter, onProgress, concurrency = 3) {
+  return mapConcurrent(scenarios, concurrency, async (s) => {
     const transcript = await adapter.run(s.prompt);
     return {
       prompt: {
@@ -3368,6 +3387,10 @@ async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurre
       transcript
     };
   }, onProgress);
+}
+async function runScenariosFromFile(scenariosPath, adapter, onProgress, concurrency = 3, expectedSkillName) {
+  const file = await loadScenariosFile(scenariosPath, expectedSkillName);
+  return runScenarios(file.scenarios, adapter, onProgress, concurrency);
 }
 
 // node_modules/is-plain-obj/index.js
@@ -10297,7 +10320,7 @@ async function probeSkill(input2) {
     const factory = input2.adapterFactory ?? ((name, cwd) => new ClaudeCodeAdapter(name, { cwd }));
     const adapter = factory(input2.skillName, workspace.cwd);
     const results = await runScenariosFromFile(input2.scenariosPath, adapter, () => {
-    });
+    }, 3, input2.skillName);
     const regressions = classifyRegressions(results);
     return { skillName: input2.skillName, results, regressions };
   } finally {

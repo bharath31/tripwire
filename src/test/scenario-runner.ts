@@ -5,37 +5,55 @@ import { mapConcurrent } from '../concurrency.js';
 
 const ZONES = new Set<ProbeZone>(['core', 'adjacent', 'negative', 'variants']);
 
-function parseScenarios(raw: string): Scenario[] {
-  const loaded = yaml.load(raw);
+function parseScenarios(loaded: unknown): Scenario[] {
   if (!loaded || typeof loaded !== 'object' || !Array.isArray((loaded as { scenarios?: unknown }).scenarios)) {
     throw new Error('Invalid scenarios file: expected a top-level `scenarios` array');
   }
+  const values = (loaded as { scenarios: unknown[] }).scenarios;
+  if (values.length === 0) {
+    throw new Error('Invalid scenarios file: `scenarios` must contain at least one entry');
+  }
 
-  return (loaded as { scenarios: unknown[] }).scenarios.map((value, index) => {
+  const scenarios: Scenario[] = [];
+  const problems: string[] = [];
+  values.forEach((value, index) => {
     if (!value || typeof value !== 'object') {
-      throw new Error(`Invalid scenario at index ${index}: expected an object`);
+      problems.push(`Invalid scenario at index ${index}: expected an object`);
+      return;
     }
     const candidate = value as Partial<Scenario>;
+    let valid = true;
     if (typeof candidate.prompt !== 'string' || candidate.prompt.trim() === '') {
-      throw new Error(`Invalid scenario at index ${index}: \`prompt\` must be a non-empty string`);
+      problems.push(`Invalid scenario at index ${index}: \`prompt\` must be a non-empty string`);
+      valid = false;
     }
-    if (typeof candidate.zone !== 'string' || !ZONES.has(candidate.zone as ProbeZone)) {
-      throw new Error(`Invalid scenario at index ${index}: unknown \`zone\` "${String(candidate.zone)}"`);
+    const validZone = typeof candidate.zone === 'string' && ZONES.has(candidate.zone as ProbeZone);
+    if (!validZone) {
+      problems.push(`Invalid scenario at index ${index}: unknown \`zone\` "${String(candidate.zone)}"`);
+      valid = false;
     }
-
+    if (candidate.expectedActivation !== undefined && typeof candidate.expectedActivation !== 'boolean') {
+      problems.push(`Invalid scenario at index ${index}: \`expectedActivation\` must be a boolean`);
+      valid = false;
+    }
     // Scenario files generated before expectedActivation was propagated used
-    // the same zone convention. Keep them runnable while ensuring every result
-    // from this point forward carries an explicit expectation.
-    const expectedActivation = typeof candidate.expectedActivation === 'boolean'
-      ? candidate.expectedActivation
-      : candidate.zone !== 'negative';
-
-    return {
-      prompt: candidate.prompt,
-      zone: candidate.zone as ProbeZone,
-      expectedActivation,
-    };
+    // the zone convention. Keep them runnable; when the explicit field is
+    // present it remains authoritative, including intentional boundary cases.
+    if (valid) {
+      scenarios.push({
+        prompt: candidate.prompt as string,
+        zone: candidate.zone as ProbeZone,
+        expectedActivation: typeof candidate.expectedActivation === 'boolean'
+          ? candidate.expectedActivation
+          : candidate.zone !== 'negative',
+      });
+    }
   });
+
+  if (problems.length > 0) {
+    throw new Error(`invalid tripwire-scenarios.yaml:\n  - ${problems.join('\n  - ')}`);
+  }
+  return scenarios;
 }
 
 /**
@@ -44,7 +62,7 @@ function parseScenarios(raw: string): Scenario[] {
  * mismatch refuses to measure one skill with another skill's committed
  * contract (the usual accident after renaming or copying a skill dir).
  */
-async function loadScenariosFile(scenariosPath: string, expectedSkillName?: string): Promise<ScenariosFile> {
+export async function loadScenariosFile(scenariosPath: string, expectedSkillName?: string): Promise<ScenariosFile> {
   let raw: string;
   try {
     raw = await readFile(scenariosPath, 'utf-8');
@@ -79,19 +97,17 @@ async function loadScenariosFile(scenariosPath: string, expectedSkillName?: stri
   return {
     skillName: candidate.skillName,
     generatedAt: typeof candidate.generatedAt === 'string' ? candidate.generatedAt : '',
-    scenarios: parseScenarios(raw),
+    scenarios: parseScenarios(doc),
   };
 }
 
-export async function runScenariosFromFile(
-  scenariosPath: string,
+export async function runScenarios(
+  scenarios: Scenario[],
   adapter: AgentAdapter,
   onProgress: (done: number, total: number) => void,
   concurrency = 3,
-  expectedSkillName?: string,
 ): Promise<ProbeResult[]> {
-  const file = await loadScenariosFile(scenariosPath, expectedSkillName);
-  return mapConcurrent(file.scenarios, concurrency, async (s) => {
+  return mapConcurrent(scenarios, concurrency, async (s) => {
     const transcript = await adapter.run(s.prompt);
     return {
       prompt: {
@@ -102,4 +118,15 @@ export async function runScenariosFromFile(
       transcript,
     };
   }, onProgress);
+}
+
+export async function runScenariosFromFile(
+  scenariosPath: string,
+  adapter: AgentAdapter,
+  onProgress: (done: number, total: number) => void,
+  concurrency = 3,
+  expectedSkillName?: string,
+): Promise<ProbeResult[]> {
+  const file = await loadScenariosFile(scenariosPath, expectedSkillName);
+  return runScenarios(file.scenarios, adapter, onProgress, concurrency);
 }

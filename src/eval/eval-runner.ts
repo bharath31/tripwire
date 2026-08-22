@@ -6,7 +6,7 @@ import type { EvalsFile, EvalCase, EvalCaseResult, RubricResult } from './types.
 import { checkAssertions } from './assertions.js';
 import { judgeRubric } from './rubric-judge.js';
 
-export async function loadEvalsFile(path: string): Promise<EvalsFile> {
+export async function loadEvalsFile(path: string, expectedSkillName?: string): Promise<EvalsFile> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
@@ -23,6 +23,12 @@ export async function loadEvalsFile(path: string): Promise<EvalsFile> {
     throw new Error(`invalid YAML in ${path}: ${err instanceof Error ? err.message : String(err)}`);
   }
   validateEvalsFile(parsed);
+  if (expectedSkillName && parsed.skillName !== expectedSkillName) {
+    throw new Error(
+      `${path} belongs to skill "${parsed.skillName}", but you are evaluating "${expectedSkillName}". ` +
+      'Update `skillName` or select the matching evals file.',
+    );
+  }
   return parsed;
 }
 
@@ -33,10 +39,13 @@ export function validateEvalsFile(file: unknown): asserts file is EvalsFile {
     throw new Error('evals file must be a YAML object with `skillName` and `cases`');
   }
   const f = file as Partial<EvalsFile>;
+  const problems: string[] = [];
+  if (typeof f.skillName !== 'string' || f.skillName.trim().length === 0) {
+    problems.push('missing `skillName` (a non-empty string)');
+  }
   if (!Array.isArray(f.cases) || f.cases.length === 0) {
     throw new Error('evals file has no `cases` list — add at least one case with a `prompt`');
   }
-  const problems: string[] = [];
   f.cases.forEach((c, i) => {
     const label = c && typeof c.name === 'string' && c.name.trim().length > 0 ? `"${c.name}"` : `case ${i + 1}`;
     if (typeof c?.prompt !== 'string' || c.prompt.trim().length === 0) {
@@ -127,8 +136,18 @@ export async function runEvalsFromFile(
   adapter: AgentAdapter,
   opts: RunEvalsOptions,
   onProgress: (done: number, total: number) => void,
+  expectedSkillName?: string,
 ): Promise<EvalCaseResult[]> {
-  const file = await loadEvalsFile(path);
+  const file = await loadEvalsFile(path, expectedSkillName);
+  return runEvals(file, adapter, opts, onProgress);
+}
+
+export async function runEvals(
+  file: EvalsFile,
+  adapter: AgentAdapter,
+  opts: RunEvalsOptions,
+  onProgress: (done: number, total: number) => void,
+): Promise<EvalCaseResult[]> {
   const results: EvalCaseResult[] = [];
   for (let i = 0; i < file.cases.length; i++) {
     results.push(await runEvalCase(file.cases[i], adapter, opts));
