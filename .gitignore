@@ -16,6 +16,10 @@ tests/fixtures/tripwire-scenarios.yaml
 
 # Generated web bundle (npm run build:web)
 web/engine.js
+web/.next/
+web/playwright-report/
+web/test-results/
+*.tsbuildinfo
 
 # Internal design docs (specs + plans) — not for the public repo
 docs/superpowers/

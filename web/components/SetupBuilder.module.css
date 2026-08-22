@@ -1,0 +1,631 @@
+.builder {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--rule-strong);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  padding: 28px 22px;
+  border-right: 1px solid var(--rule);
+  background: var(--canvas);
+}
+
+.progressIntro strong {
+  display: block;
+  margin-top: 7px;
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 590;
+  letter-spacing: -0.03em;
+}
+
+.progressKicker {
+  color: var(--signal);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.progressIntro p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.progress ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 28px 0;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  margin-top: 26px;
+  list-style: none;
+}
+
+.progress li {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 11px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.progress li > span {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+}
+
+.progress li.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.progress li.current > span {
+  border-color: var(--signal);
+  color: var(--signal);
+  background: var(--signal-wash);
+}
+
+.progress li.complete {
+  color: var(--pass);
+}
+
+.progress li.complete > span {
+  border-color: rgba(35, 122, 82, 0.3);
+  background: var(--pass-wash);
+}
+
+.reset,
+.back {
+  padding: 0;
+  border: 0;
+  color: var(--faint);
+  background: none;
+  font-size: 12px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.reset {
+  margin-top: auto;
+}
+
+.stage {
+  min-height: 690px;
+}
+
+.stageBody {
+  max-width: 690px;
+  padding: 44px clamp(28px, 5vw, 64px) 58px;
+}
+
+.stageBody > h2,
+.resultCard h2 {
+  margin: 11px 0 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(32px, 4.2vw, 50px);
+  font-weight: 560;
+  letter-spacing: -0.052em;
+  line-height: 1.02;
+}
+
+.lede {
+  margin: 18px 0 30px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.fieldset {
+  padding: 0;
+  margin: 0 0 22px;
+  border: 0;
+}
+
+.fieldset legend,
+.field > span,
+.fieldCompact > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field small {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.agentGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.agent {
+  display: flex;
+  min-height: 72px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.agent input,
+.segmented input,
+.segmentedSmall input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent strong {
+  font-size: 13px;
+}
+
+.agent span {
+  margin-top: 4px;
+  color: var(--faint);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.agent.selected {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.field,
+.fieldCompact {
+  display: block;
+  margin-bottom: 22px;
+}
+
+.field input,
+.field textarea,
+.fieldCompact input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  outline: none;
+  background: var(--surface);
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: var(--font-body), sans-serif;
+  font-size: 14px;
+}
+
+.field input:focus,
+.field textarea:focus,
+.fieldCompact input:focus {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-wash);
+}
+
+.field em {
+  display: block;
+  margin-top: 6px;
+  color: var(--faint);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.segmented,
+.segmentedSmall {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--wash);
+}
+
+.segmented label,
+.segmentedSmall label {
+  padding: 9px 13px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.segmented label.segmentSelected,
+.segmentedSmall label.segmentSelected {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgba(21, 24, 23, 0.1);
+  font-weight: 600;
+}
+
+.stageBody button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
+}
+
+.inlineHint {
+  display: inline-block;
+  margin-left: 13px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.githubShortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 0 0;
+  margin-top: 26px;
+  border-top: 1px solid var(--rule);
+}
+
+.githubShortcut > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.githubShortcut strong {
+  font-size: 12px;
+}
+
+.githubShortcut span {
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.commandBlock {
+  overflow: hidden;
+  margin: 24px 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9px;
+  background: var(--ink);
+}
+
+.commandHeader {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.48);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.commandBlock > code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 22px 16px;
+  color: #f4f5f2;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.commandBlock > button {
+  width: calc(100% - 20px);
+  margin: 0 10px 10px;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.readResult {
+  padding-top: 12px;
+}
+
+.readResult > strong {
+  font-size: 14px;
+}
+
+.outcomeGrid {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.outcomeGrid button {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 13px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.outcomeGrid button:hover {
+  border-color: var(--rule-strong);
+  background: var(--canvas);
+}
+
+.outcomeGrid i {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.passDot { background: var(--pass); }
+.failDot { background: var(--signal); }
+.warnDot { background: var(--caution); }
+
+.outcomeGrid span {
+  display: flex;
+  flex-direction: column;
+}
+
+.outcomeGrid b {
+  font-size: 13px;
+}
+
+.outcomeGrid small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.back {
+  margin-top: 24px;
+}
+
+.resultCard {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 18px;
+  padding: 24px;
+  margin: 22px 0 28px;
+  border: 1px solid rgba(35, 122, 82, 0.28);
+  border-radius: 9px;
+  background: var(--pass-wash);
+}
+
+.resultCard.misfire {
+  border-color: rgba(229, 72, 77, 0.28);
+  background: var(--signal-wash);
+}
+
+.resultCard.infrastructure {
+  border-color: rgba(165, 102, 24, 0.3);
+  background: var(--caution-wash);
+}
+
+.resultCard > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--pass);
+  font-family: var(--font-mono), monospace;
+  font-size: 22px;
+}
+
+.resultCard.misfire > span { color: var(--signal); }
+.resultCard.infrastructure > span { color: var(--caution); }
+
+.resultCard h2 {
+  margin-top: 0;
+  font-size: 35px;
+}
+
+.resultCard p {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.notice {
+  padding: 16px 18px;
+  margin: 20px 0;
+  border-left: 3px solid var(--caution);
+  background: var(--caution-wash);
+}
+
+.notice strong {
+  font-size: 13px;
+}
+
+.notice p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notice code {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.githubBox {
+  padding: 20px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9px;
+  background: var(--canvas);
+}
+
+.githubBox > div:first-child p {
+  margin: 5px 0 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fieldCompact {
+  max-width: 200px;
+}
+
+.fieldError {
+  margin: -12px 0 16px;
+  color: var(--signal);
+  font-size: 12px;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0;
+  color: var(--faint);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.or::before,
+.or::after {
+  height: 1px;
+  flex: 1;
+  background: var(--rule);
+  content: '';
+}
+
+.workflowPreview {
+  margin: 18px 0;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.workflowPreview summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workflowPreview pre {
+  overflow-x: auto;
+  padding: 15px;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  background: var(--ink);
+  color: #f4f5f2;
+  font-size: 11px;
+}
+
+@media (max-width: 820px) {
+  .builder {
+    grid-template-columns: 1fr;
+  }
+
+  .progress {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .progressIntro p,
+  .reset {
+    display: none;
+  }
+
+  .progress ol {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding: 16px 0 0;
+    margin-top: 16px;
+  }
+
+  .progress li {
+    min-height: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .stage {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .progress {
+    padding: 20px 16px;
+  }
+
+  .progress ol {
+    grid-template-columns: repeat(5, 32px);
+    justify-content: space-between;
+  }
+
+  .progress li {
+    overflow: hidden;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .stageBody {
+    padding: 32px 17px 42px;
+  }
+
+  .stageBody > h2 {
+    font-size: 38px;
+  }
+
+  .agentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent {
+    min-height: 58px;
+  }
+
+  .segmented,
+  .segmentedSmall {
+    width: 100%;
+  }
+
+  .inlineHint {
+    display: block;
+    margin: 9px 0 0;
+  }
+
+  .githubShortcut {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .resultCard {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,21 +1,8 @@
-name: Deploy site
+name: Legacy Cloudflare rollback
 
-# Auto-deploys the landing page + Pages Functions (web/ static assets and the
-# root functions/ dir) to the Cloudflare Pages project "tripwire" on every push
-# to main that touches the deployed output. The project is direct-upload (not
-# git-connected), so this workflow is what makes pushes go live.
+# Kept temporarily as a manual rollback path while production moves to Vercel.
+# The Next.js application deploys through Vercel's Git integration.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "web/**"
-      - "functions/**"
-      - "migrations/**"
-      - "src/**" # the Pages Functions bundle src/lint + src/engine
-      - "package.json"
-      - "package-lock.json"
-      - "wrangler.jsonc"
-      - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
 concurrency:
@@ -33,32 +20,19 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Last known-good static site. The live D1 data remains untouched.
+          ref: fa17ad017d7dc07a70a4c0da487d2f74bf94dc29
       - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build the browser bundle
+      - name: Build the legacy browser bundle
         run: npm run build:web
       - name: Publish to Cloudflare Pages
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: npx --yes wrangler@4 pages deploy --branch=main
-      - name: Notify participating search engines
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
-        continue-on-error: true
-        run: |
-          curl --fail-with-body --silent --show-error --retry 2 \
-            --request POST https://api.indexnow.org/indexnow \
-            --header "content-type: application/json" \
-            --data '{
-              "host": "tripwire.bharath.sh",
-              "key": "d8eaba7a6b727e84404d69e217d122d6",
-              "keyLocation": "https://tripwire.bharath.sh/d8eaba7a6b727e84404d69e217d122d6.txt",
-              "urlList": [
-                "https://tripwire.bharath.sh/",
-                "https://tripwire.bharath.sh/pricing.md"
-              ]
-            }'
       - name: Note missing token
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
-        run: echo "::warning::Set the CLOUDFLARE_API_TOKEN repo secret to enable auto-deploy."
+        run: echo "::warning::Cloudflare rollback token is not configured."
