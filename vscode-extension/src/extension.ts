@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import matter from 'gray-matter';
+import { parseFrontmatter } from '../../src/frontmatter.js';
 import { lint } from '../../src/lint/rules.js';
 import { lintResultToDiagnostics } from './diagnostics.js';
 
@@ -11,7 +11,7 @@ function lintDocument(document: vscode.TextDocument, collection: vscode.Diagnost
   if (!isSkillFile(document)) return;
 
   const text = document.getText();
-  const parsed = matter(text);
+  const parsed = parseFrontmatter(text);
   const result = lint({
     frontmatter: parsed.data as Partial<{ name: string; description: string }>,
     body: parsed.content.trim(),

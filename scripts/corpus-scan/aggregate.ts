@@ -1,11 +1,11 @@
-import matter from 'gray-matter';
+import { parseFrontmatter } from '../../src/frontmatter.js';
 import { lint } from '../../src/lint/rules.js';
 import type { LintResult, ParsedSkill } from '../../src/types.js';
 
 export function lintRaw(raw: string, filePath: string): LintResult {
   let parsed;
   try {
-    parsed = matter(raw);
+    parsed = parseFrontmatter(raw);
   } catch (err) {
     // Real published skills ship frontmatter that isn't valid YAML (unquoted colons,
     // stray quotes in the description). A naive parser dies; we count it as a finding

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { AgentAdapter, TranscriptResult } from '../../src/types.js';
 import type { EvalsFile } from '../../src/eval/types.js';
 
@@ -134,8 +134,69 @@ describe('runEvalsFromFile', () => {
     expect(calls).toEqual([[1, 2], [2, 2]]);
   });
 
-  it('throws ENOENT when the file is not found', async () => {
+  it('throws a friendly error when the file is not found', async () => {
     const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
-    await expect(runEvalsFromFile('/no/file.yaml', stubAdapter(''), {}, () => {})).rejects.toThrow('ENOENT');
+    await expect(runEvalsFromFile('/no/file.yaml', stubAdapter(''), {}, () => {})).rejects.toThrow(/no evals file found at \/no\/file\.yaml/);
+  });
+
+  it('wraps YAML parse errors with the file path', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const bad = join(tmpDir, 'bad-evals.yaml');
+    await writeFile(bad, 'cases: [oops: nope\n', 'utf-8');
+    await expect(runEvalsFromFile(bad, stubAdapter(''), {}, () => {})).rejects.toThrow(/invalid YAML in .*bad-evals\.yaml/);
+  });
+
+  it('rejects cases missing a prompt before running any sessions', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const adapter = stubAdapter('hello world');
+    const bad = join(tmpDir, 'no-prompt.yaml');
+    await writeFile(bad, yaml.dump({ skillName: 'x', cases: [{ name: 'no prompt here' }] }), 'utf-8');
+    await expect(runEvalsFromFile(bad, adapter, {}, () => {})).rejects.toThrow(/"no prompt here": missing `prompt`/);
+    expect(adapter.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects cases with no assertions and no rubric — they could only ever pass', async () => {
+    const { validateEvalsFile } = await import('../../src/eval/eval-runner.js');
+    let err: Error | undefined;
+    try {
+      validateEvalsFile({ skillName: 'x', cases: [{ name: 'empty check', prompt: 'p' }] });
+    } catch (e) { err = e as Error; }
+    expect(err?.message).toMatch(/"empty check": has no `assertions` and no `rubric`/);
+  });
+
+  it('requires a non-empty skillName', async () => {
+    const { validateEvalsFile } = await import('../../src/eval/eval-runner.js');
+    expect(() => validateEvalsFile({
+      cases: [{ name: 'checked', prompt: 'p', assertions: [{ type: 'contains', value: 'x' }] }],
+    })).toThrow(/missing `skillName`/);
+  });
+
+  it('rejects an evals file for a different skill before running sessions', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const adapter = stubAdapter('hello world');
+    await expect(runEvalsFromFile(evalsPath, adapter, {}, () => {}, 'another-skill'))
+      .rejects.toThrow(/belongs to skill "brainstorming", but you are evaluating "another-skill"/);
+    expect(adapter.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed assertion entries instead of silently inverting their meaning', async () => {
+    const { validateEvalsFile } = await import('../../src/eval/eval-runner.js');
+    const cases = [{
+      name: 'typo type',
+      prompt: 'p',
+      assertions: [
+        { type: 'containsx', value: 'hello' },
+        { type: 'contains' },
+        { type: 'not_contains', value: '' },
+      ],
+    }];
+    let err: Error | undefined;
+    try {
+      validateEvalsFile({ skillName: 'x', cases } as never);
+    } catch (e) { err = e as Error; }
+    const msg = err!.message;
+    expect(msg).toMatch(/assertion 1 has `type` "containsx"/);
+    expect(msg).toMatch(/assertion 2 is missing `value`/);
+    expect(msg).toMatch(/assertion 3 is missing `value`/);
   });
 });

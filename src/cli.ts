@@ -23,26 +23,41 @@ import {
 import { ClaudeCodeAdapter } from './adapters/claude-code.js';
 import { GeminiCliAdapter } from './adapters/gemini-cli.js';
 import { CodexCliAdapter } from './adapters/codex-cli.js';
-import { runScenariosFromFile } from './test/scenario-runner.js';
+import { assertAgentBinaryAvailable } from './adapters/preflight.js';
+import { loadScenariosFile, runScenarios } from './test/scenario-runner.js';
 import { buildInlineScenario } from './test/inline-scenario.js';
 import { summarizeDrift, renderDriftSummary } from './test/drift.js';
 import type { SkillDriftResult, SkippedSkill } from './test/drift.js';
 import { findRepoRoot, scaffoldWorkflow, scaffoldDriftWorkflow } from './init/scaffold.js';
-import { runEvalsFromFile } from './eval/eval-runner.js';
+import { loadEvalsFile, runEvals } from './eval/eval-runner.js';
 import { renderEvalReport, evalExitCode } from './eval/reporter.js';
 import { createProbeWorkspace } from './probe-workspace.js';
 import { trackBehavioralRun } from './telemetry.js';
+import { describeApiError } from './analyze/api-errors.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import type { AgentAdapter } from './types.js';
+import type { AgentAdapter, ParsedSkill, ProbeResult } from './types.js';
 
 const AGENTS = ['claude', 'gemini', 'codex'] as const;
 type AgentName = typeof AGENTS[number];
 
-function assertValidAgent(agent: string): void {
+function assertValidAgent(agent: string): asserts agent is AgentName {
   if (!(AGENTS as readonly string[]).includes(agent)) {
-    console.error(chalk.red(`Error: unknown --agent "${agent}" (expected one of: ${AGENTS.join(', ')})`));
-    process.exit(1);
+    throw new Error(`unknown --agent "${agent}" (expected one of: ${AGENTS.join(', ')})`);
+  }
+}
+
+/** Print an error cleanly and exit 1 — never a raw stack trace. */
+function fail(err: unknown): never {
+  console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+  process.exit(1);
+}
+
+function assertAgentInstalled(agent: string): void {
+  try {
+    assertAgentBinaryAvailable(agent as 'claude' | 'gemini' | 'codex');
+  } catch (err) {
+    fail(err);
   }
 }
 
@@ -158,21 +173,61 @@ program
       process.exit(1);
     }
 
-    const files = await discoverSkillFiles(skillsDir);
+    let files: string[];
+    try {
+      files = await discoverSkillFiles(skillsDir);
+    } catch (err) {
+      console.error(chalk.red(`Error: cannot scan ${skillsDir}: ${err instanceof Error ? err.message : String(err)}`));
+      process.exit(1);
+    }
     if (files.length === 0) {
       console.log(chalk.dim(`No SKILL.md files found under ${skillsDir}`));
       return;
     }
 
-    const skills = await Promise.all(files.map((f) => parseSkill(f)));
+    // One unparseable skill must not kill the whole scan — report it and
+    // keep checking the rest (the usual case is a repo with many skills
+    // where one is mid-edit).
+    const skills: ParsedSkill[] = [];
+    const parseFailures: { filePath: string; reason: string }[] = [];
+    for (const f of files) {
+      try {
+        skills.push(await parseSkill(f));
+      } catch (err) {
+        parseFailures.push({ filePath: f, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    for (const failure of parseFailures) {
+      console.log(`  ${chalk.red('✗')} could not parse ${failure.filePath} — skipped (${failure.reason})`);
+    }
+    if (parseFailures.length > 0) console.log('');
+
+    if (skills.length === 0) {
+      console.error(chalk.red(`Error: no parseable SKILL.md found under ${skillsDir} (${parseFailures.length} failed to parse)`));
+      process.exit(1);
+    }
+
     const report = detectConflicts(skills, threshold);
     console.log(formatConflictReport(skills.length, report));
-    process.exit(conflictExitCode(report));
+    // Unparseable skills are themselves a finding: the scan was incomplete,
+    // so fail even when no conflicts were found among the readable ones.
+    const exit = conflictExitCode(report) === 1 || parseFailures.length > 0 ? 1 : 0;
+    process.exit(exit);
   });
 
 interface AnalyzeOpts { model?: string; judgeModel?: string; agent?: string }
 
 const warnedUnverifiedAgents = new Set<string>();
+
+async function runAnthropicStep<T>(step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    console.error(chalk.red(`Error: ${describeApiError(err)}`));
+    process.exit(1);
+  }
+}
 
 function warnIfUnverifiedAgent(agent: string): void {
   if ((agent === 'gemini' || agent === 'codex') && !warnedUnverifiedAgents.has(agent)) {
@@ -199,6 +254,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   if (opts.judgeModel) config.judge_model = opts.judgeModel;
   const agent = opts.agent ?? config.agent;
   assertValidAgent(agent);
+  assertAgentInstalled(agent);
   warnIfUnverifiedAgent(agent);
 
   const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
@@ -207,7 +263,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   console.log('');
 
   console.log(chalk.bold('Generating probe matrix...'));
-  const matrix = await generateProbeMatrix(skill, config, apiKey);
+  const matrix = await runAnthropicStep(() => generateProbeMatrix(skill, config, apiKey));
   console.log(`Generated ${matrix.prompts.length} scenarios across 4 zones`);
   console.log('');
 
@@ -221,7 +277,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
 
   const skillName = skill.frontmatter.name ?? 'unknown';
   const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
-  let probeResults;
+  let probeResults: ProbeResult[];
   try {
     const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
     probeResults = await runProbes(
@@ -238,7 +294,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   const activatedCount = probeResults.filter(r => r.transcript.activated).length;
   if (activatedCount > 0) {
     console.log(chalk.bold(`\nJudging ${activatedCount} activated session(s)...`));
-    probeResults = await judgeActivatedSessions(probeResults, skill, config, apiKey);
+    probeResults = await runAnthropicStep(() => judgeActivatedSessions(probeResults, skill, config, apiKey));
   }
 
   const report = buildCoverageReport(skillName, lintResult, probeResults);
@@ -340,7 +396,6 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
-    warnIfUnverifiedAgent(agent);
     const scenariosPath = opts.scenarios ?? join(dirname(filePath), 'tripwire-scenarios.yaml');
     let inlineScenario;
     if (opts.prompt !== undefined) {
@@ -358,6 +413,14 @@ program
       console.error(chalk.red('Error: --expect can only be used with --prompt'));
       process.exit(1);
     }
+
+    const expectedSkillName = typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined;
+    const scenariosFile = inlineScenario
+      ? undefined
+      : await loadScenariosFile(scenariosPath, expectedSkillName);
+    const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
+    assertAgentInstalled(agent);
+    warnIfUnverifiedAgent(agent);
 
     console.log(
       inlineScenario
@@ -386,8 +449,8 @@ program
         }];
         bar.update(1);
       } else {
-        results = await runScenariosFromFile(
-          scenariosPath,
+        results = await runScenarios(
+          scenariosFile!.scenarios,
           adapter,
           (done, total) => {
             if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
@@ -401,7 +464,6 @@ program
       await probeWorkspace.cleanup();
     }
 
-    const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
     const lintResult = lint(skill, ruleConfig, customRules);
     const report = buildCoverageReport(skillName, lintResult, results);
     console.log(formatLintResult(skill.frontmatter.name ?? filePath, lintResult));
@@ -449,28 +511,51 @@ program
         continue;
       }
 
-      const skill = await parseSkill(filePath);
-      const skillName = skill.frontmatter.name ?? filePath;
-      const config = await loadConfig(dirname(filePath));
-      const agent = opts.agent ?? config.agent;
-      assertValidAgent(agent);
+      // One broken skill (unparseable frontmatter, malformed scenarios YAML)
+      // must not abort the whole drift run — skip it with the reason and
+      // keep checking the rest.
+      let prepared: {
+        skill: ParsedSkill;
+        skillName: string;
+        config: Awaited<ReturnType<typeof loadConfig>>;
+        agent: string;
+        scenarios: Awaited<ReturnType<typeof loadScenariosFile>>;
+        lintConfig: Awaited<ReturnType<typeof loadLintConfig>>;
+      };
+      try {
+        const skill = await parseSkill(filePath);
+        const skillName = skill.frontmatter.name ?? filePath;
+        const config = await loadConfig(dirname(filePath));
+        const agent = opts.agent ?? config.agent;
+        assertValidAgent(agent);
+        const scenarios = await loadScenariosFile(
+          scenariosPath,
+          typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
+        );
+        const lintConfig = await loadLintConfig(dirname(filePath));
+        prepared = { skill, skillName, config, agent, scenarios, lintConfig };
+      } catch (err) {
+        // Compact multi-line validation errors so the summary stays readable.
+        const reason = (err instanceof Error ? err.message : String(err)).replace(/\s*\n\s*/g, ' ').trim();
+        console.log(chalk.yellow(`⚠ Skipping ${filePath}: ${reason}`));
+        skipped.push({ filePath, reason, failed: true });
+        continue;
+      }
+
+      const { skill, skillName, config, agent, scenarios, lintConfig } = prepared;
+      assertAgentInstalled(agent);
       warnIfUnverifiedAgent(agent);
       console.log(chalk.bold(`Testing ${skillName}...`));
       const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
       let results;
       try {
         const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-        results = await runScenariosFromFile(
-          scenariosPath,
-          adapter,
-          () => {},
-          config.concurrency,
-        );
+        results = await runScenarios(scenarios.scenarios, adapter, () => {}, config.concurrency);
       } finally {
         await probeWorkspace.cleanup();
       }
-      const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
-      const lintResult = lint(skill, ruleConfig, customRules);
+
+      const lintResult = lint(skill, lintConfig.ruleConfig, lintConfig.customRules);
       const report = buildCoverageReport(skillName, lintResult, results);
       checked.push({
         skillName,
@@ -513,14 +598,15 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
-    warnIfUnverifiedAgent(agent);
     const evalsPath = opts.evals ?? join(dirname(filePath), 'tripwire-evals.yaml');
 
-    if (!existsSync(evalsPath)) {
-      console.error(chalk.red(`Error: no evals file found at ${evalsPath}`));
-      console.error('Author one — see the README for the tripwire-evals.yaml format (assertions + an optional rubric per case).');
-      process.exit(1);
-    }
+    const skillName = skill.frontmatter.name ?? filePath;
+    const evalsFile = await loadEvalsFile(
+      evalsPath,
+      typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
+    );
+    assertAgentInstalled(agent);
+    warnIfUnverifiedAgent(agent);
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -528,7 +614,6 @@ program
       console.log('');
     }
 
-    const skillName = skill.frontmatter.name ?? filePath;
     console.log(chalk.bold(`Running evals from: ${evalsPath}`));
     const bar = new cliProgress.SingleBar({
       format: '  {bar} {value}/{total} complete',
@@ -542,8 +627,8 @@ program
     let results;
     try {
       const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-      results = await runEvalsFromFile(
-        evalsPath,
+      results = await runEvals(
+        evalsFile,
         adapter,
         { apiKey, judgeModel: opts.judgeModel },
         (done, total) => {
@@ -562,8 +647,16 @@ program
   });
 
 // Bare `tripwire` in a repo with skills: lint them all — the 10-second first run.
-// No skills found → the usual help.
+// No skills found → the usual help. Anything that isn't a known command or flag
+// lands here too — reject it rather than silently linting (a typo'd `tripwire lnt`
+// must not look like success).
 program.action(async () => {
+  const operands: string[] = program.args ?? [];
+  if (operands.length > 0) {
+    console.error(chalk.red(`Error: unknown command "${operands[0]}"`));
+    console.error(chalk.dim(`Run 'tripwire --help' to see commands.`));
+    process.exit(1);
+  }
   const dir = findDefaultSkillsDir();
   if (!dir) {
     program.help();
@@ -573,4 +666,4 @@ program.action(async () => {
   await runLint(dir!, {});
 });
 
-program.parseAsync();
+program.parseAsync().catch(fail);

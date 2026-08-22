@@ -10,6 +10,8 @@ export interface SkillDriftResult {
 export interface SkippedSkill {
   filePath: string;
   reason: string;
+  /** Invalid inputs/configuration make the drift run incomplete and must fail CI. */
+  failed?: boolean;
 }
 
 export interface DriftSummary {
@@ -22,7 +24,7 @@ export function summarizeDrift(checked: SkillDriftResult[], skipped: SkippedSkil
   return {
     checked,
     skipped,
-    hasDrift: checked.some(
+    hasDrift: skipped.some((s) => s.failed === true) || checked.some(
       (r) => r.gaps > 0
         || r.falsePositives > 0
         || (r.infrastructureErrors ?? 0) > 0
@@ -71,10 +73,16 @@ export function renderDriftSummary(summary: DriftSummary): string {
     lines.push(`✓ No drift — all ${clean.length} skill(s) still match their committed scenarios.`);
   }
 
+  const invalidSkips = summary.skipped.filter((s) => s.failed === true);
+  if (invalidSkips.length > 0) {
+    lines.push('');
+    lines.push(`✗ Drift run incomplete — ${invalidSkips.length} skill(s) had invalid inputs or configuration.`);
+  }
+
   if (summary.skipped.length > 0) {
     lines.push('');
-    lines.push(`Skipped ${summary.skipped.length} skill(s) with no committed tripwire-scenarios.yaml:`);
-    for (const s of summary.skipped) lines.push(`  - ${s.filePath}`);
+    lines.push(`Skipped ${summary.skipped.length} skill(s):`);
+    for (const s of summary.skipped) lines.push(`  - ${s.filePath} (${s.reason})`);
   }
 
   return lines.join('\n');

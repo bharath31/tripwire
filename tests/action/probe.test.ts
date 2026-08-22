@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, rm, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import os from 'node:os';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { probeSkill } from '../../src/action/probe.js';
 import type { AgentAdapter, ScenariosFile, TranscriptResult } from '../../src/types.js';
 
@@ -103,6 +103,16 @@ describe('probeSkill', () => {
     expect(r.regressions).toHaveLength(4);
     expect(r.regressions.every((x) => x.kind === 'infrastructure')).toBe(true);
     expect(r.regressions[0].error).toBe('agent timed out');
+  });
+
+  it('rejects scenarios copied from a different skill before starting sessions', async () => {
+    const adapter = fakeAdapterFactory()('demo');
+    await expect(probeSkill({
+      skillFilePath: skillPath,
+      skillName: 'another-skill',
+      scenariosPath,
+      adapterFactory: () => adapter,
+    })).rejects.toThrow(/belongs to skill "demo", but you are testing "another-skill"/);
   });
 
   it('stages the skill in an isolated Claude workspace, then removes it', async () => {
