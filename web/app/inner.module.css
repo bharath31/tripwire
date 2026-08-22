@@ -1,0 +1,156 @@
+.hero {
+  padding-block: 82px 52px;
+  text-align: center;
+}
+
+.hero h1 {
+  max-width: 850px;
+  margin: 17px auto 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(52px, 8vw, 86px);
+  font-weight: 540;
+  letter-spacing: -0.064em;
+  line-height: 0.93;
+}
+
+.hero > p:last-child {
+  max-width: 650px;
+  margin: 24px auto 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.main {
+  padding-bottom: 120px;
+}
+
+.noteRow {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.noteRow span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.noteRow i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pass);
+}
+
+.securityIntro {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 80px;
+  padding: 52px 0 90px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.securityIntro h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 42px;
+  font-weight: 560;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.securityIntro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+.securityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-top: 1px solid var(--rule-strong);
+  border-left: 1px solid var(--rule);
+  margin-top: 90px;
+}
+
+.securityCard {
+  min-height: 280px;
+  padding: 28px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.securityCard span {
+  color: var(--signal);
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.securityCard h3 {
+  margin: 45px 0 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 25px;
+  font-weight: 580;
+  letter-spacing: -0.035em;
+}
+
+.securityCard p,
+.securityCard li {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.securityCard ul {
+  display: grid;
+  gap: 7px;
+  padding-left: 18px;
+}
+
+.securityFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 36px 0;
+}
+
+.securityFooter p {
+  max-width: 600px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .hero {
+    padding-block: 62px 40px;
+  }
+
+  .hero h1 {
+    font-size: 55px;
+  }
+
+  .securityIntro {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .securityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .securityCard {
+    min-height: 230px;
+  }
+
+  .securityFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

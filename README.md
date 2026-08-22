@@ -259,19 +259,22 @@ intentional.
 ```bash
 npm install
 npm run typecheck
+npm run typecheck:web
 npm test
+npm run test:web
 npm run build
 npm run build:action
 npm run build:web
 ```
 
-The test suite currently contains 342 tests across the CLI, Action, adapters, lint engine, evals,
-drift checks, and browser functions. Pull requests run the suite on Node.js 20 and 22, rebuild the
-browser bundle, audit production dependencies, verify the published package contents, and check the
-committed Action bundle.
+The test suites cover the CLI, Action, adapters, lint engine, evals, drift checks, browser playground,
+setup command generation, and public API contracts. Pull requests run them on Node.js 20 and 22,
+build the Next.js application, audit production dependencies, verify the published package contents,
+and check the committed Action bundle.
 
-The site in `web/` and its Cloudflare Pages Functions in `functions/` deploy to
-[tripwire.bharath.sh](https://tripwire.bharath.sh) from `main`.
+The Next.js application in `web/` deploys to [tripwire.bharath.sh](https://tripwire.bharath.sh)
+through Vercel. The legacy Cloudflare Pages configuration is retained temporarily as a manual
+rollback path during the cutover window.
 
 ## License
 

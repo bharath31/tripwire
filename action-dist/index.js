@@ -10488,6 +10488,9 @@ var package_default = {
   version: "0.1.3",
   description: "Behavioral regression tests for Agent Skills. Catch missed activations and false triggers before release.",
   type: "module",
+  workspaces: [
+    "web"
+  ],
   license: "MIT",
   engines: {
     node: ">=20"
@@ -10532,7 +10535,10 @@ var package_default = {
     pretest: "npm run build",
     test: "vitest run",
     "test:watch": "vitest",
-    "build:web": "esbuild web/src/engine.ts --bundle --format=esm --outfile=web/engine.js --minify",
+    "build:web": "npm run build --workspace @tripwire/web",
+    "dev:web": "npm run dev --workspace @tripwire/web",
+    "typecheck:web": "npm run typecheck --workspace @tripwire/web",
+    "test:web": "npm run test --workspace @tripwire/web",
     "build:action": `esbuild src/action/main.ts --bundle --platform=node --target=node20 --format=esm --banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" --outfile=action-dist/index.js`,
     "verify:action": "npm run build:action && git diff --exit-code -- action-dist/index.js",
     prepublishOnly: "npm run build"
