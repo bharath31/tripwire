@@ -23,6 +23,7 @@ import {
 import { ClaudeCodeAdapter } from './adapters/claude-code.js';
 import { GeminiCliAdapter } from './adapters/gemini-cli.js';
 import { CodexCliAdapter } from './adapters/codex-cli.js';
+import { assertAgentBinaryAvailable } from './adapters/preflight.js';
 import { runScenariosFromFile } from './test/scenario-runner.js';
 import { buildInlineScenario } from './test/inline-scenario.js';
 import { summarizeDrift, renderDriftSummary } from './test/drift.js';
@@ -50,6 +51,14 @@ function assertValidAgent(agent: string): void {
 function fail(err: unknown): never {
   console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
   process.exit(1);
+}
+
+function assertAgentInstalled(agent: string): void {
+  try {
+    assertAgentBinaryAvailable(agent as 'claude' | 'gemini' | 'codex');
+  } catch (err) {
+    fail(err);
+  }
 }
 
 function resolveAdapter(agent: string, skillName: string, cwd?: string): AgentAdapter {
@@ -205,6 +214,7 @@ async function runAnalyze(skillPath: string, opts: AnalyzeOpts): Promise<{ exitC
   if (opts.judgeModel) config.judge_model = opts.judgeModel;
   const agent = opts.agent ?? config.agent;
   assertValidAgent(agent);
+  assertAgentInstalled(agent);
   warnIfUnverifiedAgent(agent);
 
   const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
@@ -346,6 +356,7 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
+    assertAgentInstalled(agent);
     warnIfUnverifiedAgent(agent);
     const scenariosPath = opts.scenarios ?? join(dirname(filePath), 'tripwire-scenarios.yaml');
     let inlineScenario;
@@ -467,6 +478,7 @@ program
       const config = await loadConfig(dirname(filePath));
       const agent = opts.agent ?? config.agent;
       assertValidAgent(agent);
+      assertAgentInstalled(agent);
       warnIfUnverifiedAgent(agent);
       console.log(chalk.bold(`Testing ${skillName}...`));
       const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
@@ -526,6 +538,7 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
+    assertAgentInstalled(agent);
     warnIfUnverifiedAgent(agent);
     const evalsPath = opts.evals ?? join(dirname(filePath), 'tripwire-evals.yaml');
 
