@@ -15,7 +15,7 @@ const READ_TOOLS = new Set([
 
 const MUTATION_TOOLS = new Set([
   'edit', 'write', 'write_file', 'replace', 'apply_patch', 'notebook_edit',
-  'create_file', 'update_file', 'delete_file', 'move_file', 'rename_file',
+  'create_file', 'update_file', 'delete_file', 'move_file', 'rename_file', 'file_change',
 ]);
 
 const SEARCH_TOOLS = new Set([
