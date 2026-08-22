@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tripwire.bharath.sh/schemas/tripwire-review-annotation-v1.schema.json",
+  "title": "Tripwire review corpus annotation",
+  "description": "Version 1 labels for measuring run-review findings. Raw transcript content is intentionally excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "corpusId",
+    "rawTranscriptContentExcluded",
+    "sessions",
+    "annotations",
+    "reviewProcess"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "corpusId": { "$ref": "#/$defs/nonEmptyString" },
+    "rawTranscriptContentExcluded": { "const": true },
+    "sessions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/session" }
+    },
+    "annotations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/annotation" }
+    },
+    "reviewProcess": { "$ref": "#/$defs/reviewProcess" }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "eventId", "sequence", "line", "signatureDigest"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/nonEmptyString" },
+        "eventId": { "$ref": "#/$defs/nonEmptyString" },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "line": { "type": "integer", "minimum": 1 },
+        "signatureDigest": { "type": "string", "pattern": "^[a-f0-9]{32,64}$" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "consentStatus", "sanitizationStatus", "relationshipPreserved", "notes"],
+      "properties": {
+        "sourceKind": { "enum": ["consented-real", "source-verified", "synthetic"] },
+        "consentStatus": { "enum": ["affirmative", "not-required", "missing"] },
+        "sanitizationStatus": { "enum": ["human-reviewed", "mechanical-only", "not-applicable", "incomplete"] },
+        "relationshipPreserved": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 1000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sourceKind": { "const": "consented-real" } } },
+          "then": {
+            "properties": {
+              "consentStatus": { "const": "affirmative" },
+              "sanitizationStatus": { "const": "human-reviewed" },
+              "relationshipPreserved": { "const": true }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "sourceKind": { "enum": ["source-verified", "synthetic"] } } },
+          "then": { "properties": { "consentStatus": { "const": "not-required" } } }
+        }
+      ]
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "logicalSessionId", "adapter", "adapterVersion", "formatVersion", "projectKey", "provenance"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/nonEmptyString" },
+        "logicalSessionId": { "$ref": "#/$defs/nonEmptyString" },
+        "adapter": { "enum": ["claude-code", "codex-cli", "gemini-cli", "openai"] },
+        "adapterVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "formatVersion": { "type": ["string", "null"] },
+        "projectKey": { "type": ["string", "null"], "maxLength": 200 },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "reviewerLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewerId", "observation", "avoidability", "durability", "recommendedAction", "confidence", "limitations"],
+      "properties": {
+        "reviewerId": { "$ref": "#/$defs/nonEmptyString" },
+        "observation": { "enum": ["observed", "not-observed", "ambiguous", "unsupported"] },
+        "avoidability": { "enum": ["likely-avoidable", "likely-legitimate", "uncertain", "not-applicable"] },
+        "durability": { "enum": ["durable", "project-local", "volatile", "unknown"] },
+        "recommendedAction": { "enum": ["skill", "project_instruction", "investigate_workflow", "none"] },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 500 },
+          "maxItems": 20
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "resolverId", "finalLabel", "rationale"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "resolverId": { "type": ["string", "null"], "maxLength": 200 },
+        "finalLabel": { "$ref": "#/$defs/reviewerLabel" },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 1500 }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "findingType",
+        "evidence",
+        "outcomeCertainty",
+        "mutationBoundary",
+        "reviewers",
+        "adjudication"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "findingType": { "enum": ["recurrence", "retry_chain", "legitimate_repeat", "mutation_boundary", "no_finding"] },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceRef" },
+          "minItems": 1
+        },
+        "outcomeCertainty": { "enum": ["success", "error", "unknown", "mixed", "not-applicable"] },
+        "mutationBoundary": { "enum": ["none-observed", "intervening-mutation", "unknown", "not-applicable"] },
+        "reviewers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewerLabel" },
+          "minItems": 2
+        },
+        "adjudication": { "$ref": "#/$defs/adjudication" }
+      }
+    },
+    "reviewProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["independentReviewerCount", "firstPassComplete", "adjudicationComplete", "knownSamplingLimitations"],
+      "properties": {
+        "independentReviewerCount": { "type": "integer", "minimum": 2 },
+        "firstPassComplete": { "type": "boolean" },
+        "adjudicationComplete": { "type": "boolean" },
+        "knownSamplingLimitations": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    }
+  }
+}
