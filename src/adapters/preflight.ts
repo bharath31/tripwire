@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { join } from 'node:path';
 import chalk from 'chalk';
 
@@ -10,7 +10,17 @@ export const AGENT_BINARIES = {
 
 export type PreflightAgent = keyof typeof AGENT_BINARIES;
 
-const WINDOWS_EXTS = ['.cmd', '.exe', '.bat'];
+const WINDOWS_EXTS = ['.cmd', '.exe', '.bat', '.com'];
+
+function isRunnableFile(path: string, platform: NodeJS.Platform): boolean {
+  try {
+    if (!statSync(path).isFile()) return false;
+    if (platform !== 'win32') accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Locate `bin` on the given PATH list without spawning a shell. */
 export function findBinaryOnPath(
@@ -22,11 +32,11 @@ export function findBinaryOnPath(
   // drive letters (C:\...). Unix uses ':'.
   const sep = platform === 'win32' ? ';' : ':';
   for (const dir of pathList.split(sep).filter(Boolean)) {
-    if (existsSync(join(dir, bin))) return join(dir, bin);
+    if (isRunnableFile(join(dir, bin), platform)) return join(dir, bin);
     if (platform === 'win32') {
       for (const ext of WINDOWS_EXTS) {
         const p = join(dir, bin + ext);
-        if (existsSync(p)) return p;
+        if (isRunnableFile(p, platform)) return p;
       }
     }
   }

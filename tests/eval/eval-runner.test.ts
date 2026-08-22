@@ -164,6 +164,21 @@ describe('runEvalsFromFile', () => {
     expect(err?.message).toMatch(/"empty check": has no `assertions` and no `rubric`/);
   });
 
+  it('requires a non-empty skillName', async () => {
+    const { validateEvalsFile } = await import('../../src/eval/eval-runner.js');
+    expect(() => validateEvalsFile({
+      cases: [{ name: 'checked', prompt: 'p', assertions: [{ type: 'contains', value: 'x' }] }],
+    })).toThrow(/missing `skillName`/);
+  });
+
+  it('rejects an evals file for a different skill before running sessions', async () => {
+    const { runEvalsFromFile } = await import('../../src/eval/eval-runner.js');
+    const adapter = stubAdapter('hello world');
+    await expect(runEvalsFromFile(evalsPath, adapter, {}, () => {}, 'another-skill'))
+      .rejects.toThrow(/belongs to skill "brainstorming", but you are evaluating "another-skill"/);
+    expect(adapter.run).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed assertion entries instead of silently inverting their meaning', async () => {
     const { validateEvalsFile } = await import('../../src/eval/eval-runner.js');
     const cases = [{

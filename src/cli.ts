@@ -24,12 +24,12 @@ import { ClaudeCodeAdapter } from './adapters/claude-code.js';
 import { GeminiCliAdapter } from './adapters/gemini-cli.js';
 import { CodexCliAdapter } from './adapters/codex-cli.js';
 import { assertAgentBinaryAvailable } from './adapters/preflight.js';
-import { runScenariosFromFile } from './test/scenario-runner.js';
+import { loadScenariosFile, runScenarios } from './test/scenario-runner.js';
 import { buildInlineScenario } from './test/inline-scenario.js';
 import { summarizeDrift, renderDriftSummary } from './test/drift.js';
 import type { SkillDriftResult, SkippedSkill } from './test/drift.js';
 import { findRepoRoot, scaffoldWorkflow, scaffoldDriftWorkflow } from './init/scaffold.js';
-import { runEvalsFromFile } from './eval/eval-runner.js';
+import { loadEvalsFile, runEvals } from './eval/eval-runner.js';
 import { renderEvalReport, evalExitCode } from './eval/reporter.js';
 import { createProbeWorkspace } from './probe-workspace.js';
 import { trackBehavioralRun } from './telemetry.js';
@@ -41,10 +41,9 @@ import type { AgentAdapter, ParsedSkill, ProbeResult } from './types.js';
 const AGENTS = ['claude', 'gemini', 'codex'] as const;
 type AgentName = typeof AGENTS[number];
 
-function assertValidAgent(agent: string): void {
+function assertValidAgent(agent: string): asserts agent is AgentName {
   if (!(AGENTS as readonly string[]).includes(agent)) {
-    console.error(chalk.red(`Error: unknown --agent "${agent}" (expected one of: ${AGENTS.join(', ')})`));
-    process.exit(1);
+    throw new Error(`unknown --agent "${agent}" (expected one of: ${AGENTS.join(', ')})`);
   }
 }
 
@@ -397,8 +396,6 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
-    assertAgentInstalled(agent);
-    warnIfUnverifiedAgent(agent);
     const scenariosPath = opts.scenarios ?? join(dirname(filePath), 'tripwire-scenarios.yaml');
     let inlineScenario;
     if (opts.prompt !== undefined) {
@@ -417,11 +414,13 @@ program
       process.exit(1);
     }
 
-    if (!inlineScenario && !existsSync(scenariosPath)) {
-      console.error(chalk.red(`Error: no scenarios file found at ${scenariosPath}`));
-      console.error(`Run ${chalk.bold(`tripwire analyze ${skillPath}`)} first to generate one, then commit tripwire-scenarios.yaml alongside the skill.`);
-      process.exit(1);
-    }
+    const expectedSkillName = typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined;
+    const scenariosFile = inlineScenario
+      ? undefined
+      : await loadScenariosFile(scenariosPath, expectedSkillName);
+    const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
+    assertAgentInstalled(agent);
+    warnIfUnverifiedAgent(agent);
 
     console.log(
       inlineScenario
@@ -450,15 +449,14 @@ program
         }];
         bar.update(1);
       } else {
-        results = await runScenariosFromFile(
-          scenariosPath,
+        results = await runScenarios(
+          scenariosFile!.scenarios,
           adapter,
           (done, total) => {
             if (knownTotal === 0) { knownTotal = total; bar.setTotal(total); }
             bar.update(done);
           },
           config.concurrency,
-          typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
         );
       }
     } finally {
@@ -466,7 +464,6 @@ program
       await probeWorkspace.cleanup();
     }
 
-    const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
     const lintResult = lint(skill, ruleConfig, customRules);
     const report = buildCoverageReport(skillName, lintResult, results);
     console.log(formatLintResult(skill.frontmatter.name ?? filePath, lintResult));
@@ -514,44 +511,51 @@ program
         continue;
       }
 
-      const config = await loadConfig(dirname(filePath));
-      const agent = opts.agent ?? config.agent;
-      assertValidAgent(agent);
-      assertAgentInstalled(agent);
-      warnIfUnverifiedAgent(agent);
-
       // One broken skill (unparseable frontmatter, malformed scenarios YAML)
       // must not abort the whole drift run — skip it with the reason and
       // keep checking the rest.
-      let skill: ParsedSkill;
-      let skillName: string;
-      let results;
+      let prepared: {
+        skill: ParsedSkill;
+        skillName: string;
+        config: Awaited<ReturnType<typeof loadConfig>>;
+        agent: string;
+        scenarios: Awaited<ReturnType<typeof loadScenariosFile>>;
+        lintConfig: Awaited<ReturnType<typeof loadLintConfig>>;
+      };
       try {
-        skill = await parseSkill(filePath);
-        skillName = skill.frontmatter.name ?? filePath;
-        console.log(chalk.bold(`Testing ${skillName}...`));
-        const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
-        try {
-          const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-          results = await runScenariosFromFile(
-            scenariosPath,
-            adapter,
-            () => {},
-            config.concurrency,
-          );
-        } finally {
-          await probeWorkspace.cleanup();
-        }
+        const skill = await parseSkill(filePath);
+        const skillName = skill.frontmatter.name ?? filePath;
+        const config = await loadConfig(dirname(filePath));
+        const agent = opts.agent ?? config.agent;
+        assertValidAgent(agent);
+        const scenarios = await loadScenariosFile(
+          scenariosPath,
+          typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
+        );
+        const lintConfig = await loadLintConfig(dirname(filePath));
+        prepared = { skill, skillName, config, agent, scenarios, lintConfig };
       } catch (err) {
         // Compact multi-line validation errors so the summary stays readable.
         const reason = (err instanceof Error ? err.message : String(err)).replace(/\s*\n\s*/g, ' ').trim();
         console.log(chalk.yellow(`⚠ Skipping ${filePath}: ${reason}`));
-        skipped.push({ filePath, reason });
+        skipped.push({ filePath, reason, failed: true });
         continue;
       }
 
-      const { ruleConfig, customRules } = await loadLintConfig(dirname(filePath));
-      const lintResult = lint(skill, ruleConfig, customRules);
+      const { skill, skillName, config, agent, scenarios, lintConfig } = prepared;
+      assertAgentInstalled(agent);
+      warnIfUnverifiedAgent(agent);
+      console.log(chalk.bold(`Testing ${skillName}...`));
+      const probeWorkspace = await createProbeWorkspace(agent, filePath, skillName);
+      let results;
+      try {
+        const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
+        results = await runScenarios(scenarios.scenarios, adapter, () => {}, config.concurrency);
+      } finally {
+        await probeWorkspace.cleanup();
+      }
+
+      const lintResult = lint(skill, lintConfig.ruleConfig, lintConfig.customRules);
       const report = buildCoverageReport(skillName, lintResult, results);
       checked.push({
         skillName,
@@ -594,15 +598,15 @@ program
     const config = await loadConfig(dirname(filePath));
     const agent = opts.agent ?? config.agent;
     assertValidAgent(agent);
-    assertAgentInstalled(agent);
-    warnIfUnverifiedAgent(agent);
     const evalsPath = opts.evals ?? join(dirname(filePath), 'tripwire-evals.yaml');
 
-    if (!existsSync(evalsPath)) {
-      console.error(chalk.red(`Error: no evals file found at ${evalsPath}`));
-      console.error('Author one — see the README for the tripwire-evals.yaml format (assertions + an optional rubric per case).');
-      process.exit(1);
-    }
+    const skillName = skill.frontmatter.name ?? filePath;
+    const evalsFile = await loadEvalsFile(
+      evalsPath,
+      typeof skill.frontmatter.name === 'string' ? skill.frontmatter.name : undefined,
+    );
+    assertAgentInstalled(agent);
+    warnIfUnverifiedAgent(agent);
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -610,7 +614,6 @@ program
       console.log('');
     }
 
-    const skillName = skill.frontmatter.name ?? filePath;
     console.log(chalk.bold(`Running evals from: ${evalsPath}`));
     const bar = new cliProgress.SingleBar({
       format: '  {bar} {value}/{total} complete',
@@ -624,8 +627,8 @@ program
     let results;
     try {
       const adapter = resolveAdapter(agent, skillName, probeWorkspace.cwd);
-      results = await runEvalsFromFile(
-        evalsPath,
+      results = await runEvals(
+        evalsFile,
         adapter,
         { apiKey, judgeModel: opts.judgeModel },
         (done, total) => {

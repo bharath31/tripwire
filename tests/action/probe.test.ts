@@ -105,6 +105,16 @@ describe('probeSkill', () => {
     expect(r.regressions[0].error).toBe('agent timed out');
   });
 
+  it('rejects scenarios copied from a different skill before starting sessions', async () => {
+    const adapter = fakeAdapterFactory()('demo');
+    await expect(probeSkill({
+      skillFilePath: skillPath,
+      skillName: 'another-skill',
+      scenariosPath,
+      adapterFactory: () => adapter,
+    })).rejects.toThrow(/belongs to skill "demo", but you are testing "another-skill"/);
+  });
+
   it('stages the skill in an isolated Claude workspace, then removes it', async () => {
     let observedCwd = '';
     let observedContent = '';

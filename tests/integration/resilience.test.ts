@@ -106,16 +106,52 @@ describe('conflicts resilience (integration)', () => {
 });
 
 describe('test-all resilience (integration)', () => {
-  it('skips broken skills with a reason instead of aborting the drift run', async () => {
+  it('reports every broken input, skips agent preflight, and fails the incomplete drift run', async () => {
     const root = tmp();
     await writeSkill(root, 'no-scenarios', GOOD_SKILL);
-    await writeSkill(root, 'broken', '---\nname: [unclosed\n---\nbody\n');
+    const brokenSkill = await writeSkill(root, 'broken', '---\nname: [unclosed\n---\nbody\n');
+    await writeFile(
+      join(dirname(brokenSkill), 'tripwire-scenarios.yaml'),
+      'skillName: broken\nscenarios:\n  - prompt: hello\n    zone: core\n    expectedActivation: true\n',
+      'utf-8',
+    );
+    const badScenarios = await writeSkill(
+      root,
+      'bad-scenarios',
+      GOOD_SKILL.replace('name: alpha', 'name: bad-scenarios'),
+    );
+    await writeFile(
+      join(dirname(badScenarios), 'tripwire-scenarios.yaml'),
+      'skillName: bad-scenarios\nscenarios:\n  - prompt: hello\n    zone: negitive\n    expectedActivation: false\n',
+      'utf-8',
+    );
 
     const result = await execa('node', [CLI, 'test-all', root], { reject: false });
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Skipped 2 skill(s)');
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain('Skipped 3 skill(s)');
     expect(result.stdout).toContain(join('no-scenarios', 'SKILL.md'));
     expect(result.stdout).toContain(join('broken', 'SKILL.md'));
+    expect(result.stdout).toContain(join('bad-scenarios', 'SKILL.md'));
+    expect(result.stdout).toContain('unknown `zone` "negitive"');
+    expect(result.stderr).not.toContain('CLI not found in PATH');
     expect(result.stderr).not.toMatch(/at async|node:internal/);
+  });
+});
+
+describe('input validation before agent preflight (integration)', () => {
+  it.each([
+    ['test', 'no scenarios file found'],
+    ['eval', 'no evals file found'],
+  ] as const)('%s reports its missing contract before a missing agent CLI', async (command, expected) => {
+    const root = tmp();
+    const skillPath = await writeSkill(root, 'alpha', GOOD_SKILL);
+    const result = await execa(process.execPath, [CLI, command, skillPath], {
+      reject: false,
+      env: { ...process.env, PATH: '/definitely-no-agent-binaries' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(expected);
+    expect(result.stderr).not.toContain('CLI not found in PATH');
   });
 });

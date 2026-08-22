@@ -18,7 +18,7 @@ export async function probeSkill(input: ProbeInput): Promise<SkillProbeResult> {
     const factory = input.adapterFactory
       ?? ((name: string, cwd: string) => new ClaudeCodeAdapter(name, { cwd }));
     const adapter = factory(input.skillName, workspace.cwd);
-    const results = await runScenariosFromFile(input.scenariosPath, adapter, () => {});
+    const results = await runScenariosFromFile(input.scenariosPath, adapter, () => {}, 3, input.skillName);
     const regressions = classifyRegressions(results);
 
     return { skillName: input.skillName, results, regressions };

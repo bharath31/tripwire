@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { parseFrontmatter } from './frontmatter.js';
 import type { ParsedSkill } from './types.js';
 
+function isMissingPathError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
 export async function parseSkill(filePath: string): Promise<ParsedSkill> {
   const raw = await readFile(filePath, 'utf-8');
   const parsed = parseFrontmatter(raw);
@@ -17,8 +22,9 @@ export async function resolveSkillFilePath(arg: string): Promise<string> {
   let s;
   try {
     s = await stat(arg);
-  } catch {
-    throw new Error(`No such file or directory: ${arg}`);
+  } catch (err) {
+    if (isMissingPathError(err)) throw new Error(`No such file or directory: ${arg}`);
+    throw err;
   }
   if (!s.isDirectory()) return arg;
 
@@ -27,7 +33,9 @@ export async function resolveSkillFilePath(arg: string): Promise<string> {
       const p = join(arg, candidate);
       await stat(p);
       return p;
-    } catch {}
+    } catch (err) {
+      if (!isMissingPathError(err)) throw err;
+    }
   }
   throw new Error(`No skill .md file found in directory: ${arg}`);
 }
@@ -41,8 +49,9 @@ export async function resolveLintTargets(arg: string): Promise<string[]> {
   let s;
   try {
     s = await stat(arg);
-  } catch {
-    throw new Error(`No such file or directory: ${arg}`);
+  } catch (err) {
+    if (isMissingPathError(err)) throw new Error(`No such file or directory: ${arg}`);
+    throw err;
   }
   if (!s.isDirectory()) return [arg];
 
@@ -51,7 +60,9 @@ export async function resolveLintTargets(arg: string): Promise<string[]> {
       const p = join(arg, candidate);
       await stat(p);
       return [p];
-    } catch {}
+    } catch (err) {
+      if (!isMissingPathError(err)) throw err;
+    }
   }
   return discoverSkillFiles(arg);
 }

@@ -84,6 +84,53 @@ describe('runScenariosFromFile', () => {
     expect(freshAdapter.run).not.toHaveBeenCalled();
   });
 
+  it('reports every invalid scenario before running any sessions', async () => {
+    const bad = join(tmpDir, 'multiple-invalid.yaml');
+    await writeFile(bad, yaml.dump({
+      ...baseFile,
+      scenarios: [
+        { zone: 'core', expectedActivation: 'yes' },
+        { prompt: 'bad expectation type', zone: 'negative', expectedActivation: 'false' },
+        { prompt: 'unknown zone', zone: 'negitive', expectedActivation: false },
+      ],
+    }), 'utf-8');
+    const freshAdapter: AgentAdapter = { run: vi.fn() };
+
+    let error: Error | undefined;
+    try {
+      await runScenariosFromFile(bad, freshAdapter, () => {});
+    } catch (err) {
+      error = err as Error;
+    }
+
+    expect(error?.message).toContain('index 0: `prompt` must be a non-empty string');
+    expect(error?.message).toContain('index 0: `expectedActivation` must be a boolean');
+    expect(error?.message).toContain('index 1: `expectedActivation` must be a boolean');
+    expect(error?.message).toContain('index 2: unknown `zone` "negitive"');
+    expect(freshAdapter.run).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy scenarios without expectedActivation runnable', async () => {
+    const legacy = join(tmpDir, 'legacy.yaml');
+    await writeFile(legacy, yaml.dump({
+      ...baseFile,
+      scenarios: [
+        { prompt: 'core prompt', zone: 'core' },
+        { prompt: 'negative prompt', zone: 'negative' },
+      ],
+    }), 'utf-8');
+
+    const results = await runScenariosFromFile(legacy, mockAdapter, () => {});
+    expect(results.map((result) => result.prompt.expectedActivation)).toEqual([true, false]);
+  });
+
+  it('rejects an empty scenarios list', async () => {
+    const empty = join(tmpDir, 'empty-scenarios.yaml');
+    await writeFile(empty, yaml.dump({ ...baseFile, scenarios: [] }), 'utf-8');
+    await expect(runScenariosFromFile(empty, mockAdapter, () => {}))
+      .rejects.toThrow(/must contain at least one entry/);
+  });
+
   it('rejects a missing or empty skillName', async () => {
     const noName = { generatedAt: '', scenarios: baseFile.scenarios };
     const p = join(tmpDir, 'noname.yaml');
