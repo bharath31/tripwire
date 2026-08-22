@@ -149,3 +149,12 @@ for (const btn of document.querySelectorAll('.copy-btn[data-copy]')) {
 const shared = readShareStateFromHash();
 input.value = shared !== null ? shared : EXAMPLES.bad;
 lintNow();
+
+for (const el of document.querySelectorAll('[data-stars]')) {
+  fetch('https://api.github.com/repos/bharath31/tripwire')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (d && typeof d.stargazers_count === 'number') el.textContent = String(d.stargazers_count);
+    })
+    .catch(() => {});
+}
